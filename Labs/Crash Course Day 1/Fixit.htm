@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ES Modules Challenge</title>
+    <script src="js/app.js" defer type="module"></script>
+    <script src="js/utils.js" defer type="module"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        .container {
+            padding: 2rem;
+            border-radius: 10px;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Your Challenge Results</h1>
+        <p id="color-name"></p>
+        <p id="random-number"></p>
+    </div>
+
+    <!-- ✅ Keep module type -->
+    <script type="module" src="./app.js"></script>
+</body>
+</html>
