@@ -1,0 +1,21 @@
+{
+  "name": "issuetracker",
+  "version": "1.0.0",
+  "description": "Issue Tracker for debugging",
+  "main": "index",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "all-coursework-ryanjordan1234"
+  },
+  "keywords": [
+    "Issue",
+    "tracker",
+    "Ryan",
+    "Jordan"
+  ],
+  "author": "Ryan Jordan",
+  "license": "MIT"
+}
