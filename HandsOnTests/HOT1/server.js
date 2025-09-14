@@ -80,7 +80,7 @@ app.post('/api/income-tax/calc', (req, res) => {
     return res.status(400).json({ error: 'Income must be a valid number greater than 0' });
   }
   
-  // Calculate income tax based on 2024 tax brackets
+  // Calculate income tax based on 2024 tax brackets (from NerdWallet)
   let tax = 0;
   
   if (mode === 'Single') {
@@ -90,33 +90,33 @@ app.post('/api/income-tax/calc', (req, res) => {
       tax += (243725 - 191950) * 0.32;
       tax += (191950 - 100525) * 0.24;
       tax += (100525 - 47150) * 0.22;
-      tax += (47150 - 11000) * 0.12;
-      tax += 11000 * 0.10;
+      tax += (47150 - 11600) * 0.12;
+      tax += 11600 * 0.10;
     } else if (incomeAmount > 243725) {
       tax += (incomeAmount - 243725) * 0.35;
       tax += (243725 - 191950) * 0.32;
       tax += (191950 - 100525) * 0.24;
       tax += (100525 - 47150) * 0.22;
-      tax += (47150 - 11000) * 0.12;
-      tax += 11000 * 0.10;
+      tax += (47150 - 11600) * 0.12;
+      tax += 11600 * 0.10;
     } else if (incomeAmount > 191950) {
       tax += (incomeAmount - 191950) * 0.32;
       tax += (191950 - 100525) * 0.24;
       tax += (100525 - 47150) * 0.22;
-      tax += (47150 - 11000) * 0.12;
-      tax += 11000 * 0.10;
+      tax += (47150 - 11600) * 0.12;
+      tax += 11600 * 0.10;
     } else if (incomeAmount > 100525) {
       tax += (incomeAmount - 100525) * 0.24;
       tax += (100525 - 47150) * 0.22;
-      tax += (47150 - 11000) * 0.12;
-      tax += 11000 * 0.10;
+      tax += (47150 - 11600) * 0.12;
+      tax += 11600 * 0.10;
     } else if (incomeAmount > 47150) {
       tax += (incomeAmount - 47150) * 0.22;
-      tax += (47150 - 11000) * 0.12;
-      tax += 11000 * 0.10;
-    } else if (incomeAmount > 11000) {
-      tax += (incomeAmount - 11000) * 0.12;
-      tax += 11000 * 0.10;
+      tax += (47150 - 11600) * 0.12;
+      tax += 11600 * 0.10;
+    } else if (incomeAmount > 11600) {
+      tax += (incomeAmount - 11600) * 0.12;
+      tax += 11600 * 0.10;
     } else {
       tax = incomeAmount * 0.10;
     }
@@ -127,33 +127,33 @@ app.post('/api/income-tax/calc', (req, res) => {
       tax += (487450 - 383900) * 0.32;
       tax += (383900 - 201050) * 0.24;
       tax += (201050 - 94300) * 0.22;
-      tax += (94300 - 22000) * 0.12;
-      tax += 22000 * 0.10;
+      tax += (94300 - 23200) * 0.12;
+      tax += 23200 * 0.10;
     } else if (incomeAmount > 487450) {
       tax += (incomeAmount - 487450) * 0.35;
       tax += (487450 - 383900) * 0.32;
       tax += (383900 - 201050) * 0.24;
       tax += (201050 - 94300) * 0.22;
-      tax += (94300 - 22000) * 0.12;
-      tax += 22000 * 0.10;
+      tax += (94300 - 23200) * 0.12;
+      tax += 23200 * 0.10;
     } else if (incomeAmount > 383900) {
       tax += (incomeAmount - 383900) * 0.32;
       tax += (383900 - 201050) * 0.24;
       tax += (201050 - 94300) * 0.22;
-      tax += (94300 - 22000) * 0.12;
-      tax += 22000 * 0.10;
+      tax += (94300 - 23200) * 0.12;
+      tax += 23200 * 0.10;
     } else if (incomeAmount > 201050) {
       tax += (incomeAmount - 201050) * 0.24;
       tax += (201050 - 94300) * 0.22;
-      tax += (94300 - 22000) * 0.12;
-      tax += 22000 * 0.10;
+      tax += (94300 - 23200) * 0.12;
+      tax += 23200 * 0.10;
     } else if (incomeAmount > 94300) {
       tax += (incomeAmount - 94300) * 0.22;
-      tax += (94300 - 22000) * 0.12;
-      tax += 22000 * 0.10;
-    } else if (incomeAmount > 22000) {
-      tax += (incomeAmount - 22000) * 0.12;
-      tax += 22000 * 0.10;
+      tax += (94300 - 23200) * 0.12;
+      tax += 23200 * 0.10;
+    } else if (incomeAmount > 23200) {
+      tax += (incomeAmount - 23200) * 0.12;
+      tax += 23200 * 0.10;
     } else {
       tax = incomeAmount * 0.10;
     }
