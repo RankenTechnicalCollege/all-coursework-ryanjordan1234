@@ -2,9 +2,12 @@
   "name": "issuetracker",
   "version": "1.0.0",
   "description": "Issue Tracker for debugging",
-  "main": "index",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "repository": {
     "type": "git",
@@ -17,5 +20,10 @@
     "Jordan"
   ],
   "author": "Ryan Jordan",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "debug": "^4.3.4",
+    "nanoid": "^5.0.4"
+  }
 }
