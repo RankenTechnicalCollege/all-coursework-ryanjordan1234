@@ -1,0 +1,133 @@
+// Issue Tracker Database Manipulation Commands
+
+// 1. Add a new developer to the database
+db.users.insertOne({
+  _id: ObjectId("507f1f77bcf86cd799439014"),
+  email: "new.developer@company.com",
+  password: "hashedPasswordNew",
+  fullName: "New Developer",
+  givenName: "New",
+  familyName: "Developer",
+  role: "Developer"
+})
+
+// 2. Add a new bug to the database, but only include the minimum required fields
+var newBugId = ObjectId("507f1f77bcf86cd799439023")
+db.bugs.insertOne({
+  _id: newBugId,
+  title: "New Bug Report",
+  description: "Description of the new bug",
+  stepsToReproduce: "Steps to reproduce the bug",
+  authorId: ObjectId("507f1f77bcf86cd799439014"), // The new developer we just added
+  dateCreated: new Date(),
+  classification: "unclassified",
+  isClosed: false,
+  fixedVersion: null,
+  fixedDate: null
+})
+
+// 3. Assign this bug to a Quality Analyst
+db.bugs.updateOne(
+  { _id: newBugId },
+  { 
+    $set: { 
+      assignedToId: ObjectId("507f1f77bcf86cd799439012") // Jane Quality
+    }
+  }
+)
+
+// Record the assignment change in edit history
+db.editHistory.insertOne({
+  _id: ObjectId(),
+  bugId: newBugId,
+  editedBy: ObjectId("507f1f77bcf86cd799439014"), // Assigned by the author
+  fieldChanged: "assignedToId",
+  oldValue: null,
+  newValue: ObjectId("507f1f77bcf86cd799439012"),
+  dateChanged: new Date()
+})
+
+// 4. Add a comment to this bug
+db.comments.insertOne({
+  _id: ObjectId(),
+  bugId: newBugId,
+  authorId: ObjectId("507f1f77bcf86cd799439012"), // Jane Quality adding comment
+  content: "I've reviewed this bug and will begin testing shortly.",
+  dateCreated: new Date()
+})
+
+// 5. Add a test case to this bug
+db.testCases.insertOne({
+  _id: ObjectId(),
+  bugId: newBugId,
+  description: "Test the reported functionality with different browser configurations",
+  status: "failed",
+  createdBy: ObjectId("507f1f77bcf86cd799439012"), // Jane Quality
+  dateCreated: new Date()
+})
+
+// 6. Add hours to this bug (developer working on it)
+db.timeEntries.insertOne({
+  _id: ObjectId(),
+  bugId: newBugId,
+  developerId: ObjectId("507f1f77bcf86cd799439014"), // New developer
+  hoursWorked: 4.0,
+  dateLogged: new Date()
+})
+
+// 7. Mark the bug fixed by you with the time it was fixed and the version it was fixed in
+db.bugs.updateOne(
+  { _id: newBugId },
+  { 
+    $set: { 
+      fixedDate: new Date(),
+      fixedVersion: "v1.2.3"
+    }
+  }
+)
+
+// Record the fix in edit history
+db.editHistory.insertMany([
+  {
+    _id: ObjectId(),
+    bugId: newBugId,
+    editedBy: ObjectId("507f1f77bcf86cd799439014"),
+    fieldChanged: "fixedDate",
+    oldValue: null,
+    newValue: new Date(),
+    dateChanged: new Date()
+  },
+  {
+    _id: ObjectId(),
+    bugId: newBugId,
+    editedBy: ObjectId("507f1f77bcf86cd799439014"),
+    fieldChanged: "fixedVersion",
+    oldValue: null,
+    newValue: "v1.2.3",
+    dateChanged: new Date()
+  }
+])
+
+// 8. Close the bug (Do not delete it, information must be retained)
+db.bugs.updateOne(
+  { _id: newBugId },
+  { 
+    $set: { 
+      isClosed: true
+    }
+  }
+)
+
+// Record the closure in edit history
+db.editHistory.insertOne({
+  _id: ObjectId(),
+  bugId: newBugId,
+  editedBy: ObjectId("507f1f77bcf86cd799439013"), // Business Analyst closes bugs
+  fieldChanged: "isClosed",
+  oldValue: false,
+  newValue: true,
+  dateChanged: new Date()
+})
+
+// Verify the bug was created and modified correctly
+db.bugs.findOne({ _id: newBugId })

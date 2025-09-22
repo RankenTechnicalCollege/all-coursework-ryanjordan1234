@@ -1,0 +1,189 @@
+// Issue Tracker Database Queries
+// Replace YOUR_USER_ID with your actual user ObjectId
+
+// 1. List all of the bugs that your user created
+db.bugs.find({ "authorId": ObjectId("507f1f77bcf86cd799439012") })
+
+// 2. List all of the bugs that you are assigned to
+db.bugs.find({ "assignedToId": ObjectId("507f1f77bcf86cd799439011") })
+
+// 3. List all of the bugs that you created or are assigned to
+db.bugs.find({
+  $or: [
+    { "authorId": ObjectId("507f1f77bcf86cd799439011") },
+    { "assignedToId": ObjectId("507f1f77bcf86cd799439011") }
+  ]
+})
+
+// 4. List all of the bugs that are unclassified
+db.bugs.find({ "classification": "unclassified" })
+
+// 5. List all of the bugs that have been approved by a Business Analyst, but are not closed
+db.bugs.find({ 
+  "classification": "approved", 
+  "isClosed": false 
+})
+
+// 6. List all of the bugs that are fixed, but are not closed
+db.bugs.find({ 
+  "fixedDate": { $ne: null }, 
+  "isClosed": false 
+})
+
+// 7. List all of the bugs that do not have steps to reproduce
+db.bugs.find({
+  $or: [
+    { "stepsToReproduce": { $exists: false } },
+    { "stepsToReproduce": "" },
+    { "stepsToReproduce": null }
+  ]
+})
+
+// 8. List all of the bugs that do not have test cases
+db.bugs.aggregate([
+  {
+    $lookup: {
+      from: "testCases",
+      localField: "_id",
+      foreignField: "bugId",
+      as: "testCases"
+    }
+  },
+  {
+    $match: {
+      "testCases": { $size: 0 }
+    }
+  },
+  {
+    $project: {
+      testCases: 0
+    }
+  }
+])
+
+// 9. List all of the bugs that do not have hours/work/labor recorded
+db.bugs.aggregate([
+  {
+    $lookup: {
+      from: "timeEntries",
+      localField: "_id",
+      foreignField: "bugId",
+      as: "timeEntries"
+    }
+  },
+  {
+    $match: {
+      "timeEntries": { $size: 0 }
+    }
+  },
+  {
+    $project: {
+      timeEntries: 0
+    }
+  }
+])
+
+// 10. List all bugs, with the number of comments for each bug
+db.bugs.aggregate([
+  {
+    $lookup: {
+      from: "comments",
+      localField: "_id",
+      foreignField: "bugId",
+      as: "comments"
+    }
+  },
+  {
+    $project: {
+      _id: 1,
+      title: 1,
+      description: 1,
+      authorId: 1,
+      assignedToId: 1,
+      dateCreated: 1,
+      classification: 1,
+      isClosed: 1,
+      commentCount: { $size: "$comments" }
+    }
+  }
+])
+
+// 11. List all bugs, with the total number of hours worked on each bug
+db.bugs.aggregate([
+  {
+    $lookup: {
+      from: "timeEntries",
+      localField: "_id",
+      foreignField: "bugId",
+      as: "timeEntries"
+    }
+  },
+  {
+    $project: {
+      _id: 1,
+      title: 1,
+      description: 1,
+      authorId: 1,
+      assignedToId: 1,
+      dateCreated: 1,
+      classification: 1,
+      isClosed: 1,
+      totalHours: {
+        $cond: {
+          if: { $eq: [{ $size: "$timeEntries" }, 0] },
+          then: 0,
+          else: { $sum: "$timeEntries.hoursWorked" }
+        }
+      }
+    }
+  }
+])
+
+// 12. List all of the bugs with failing test cases
+db.bugs.aggregate([
+  {
+    $lookup: {
+      from: "testCases",
+      localField: "_id",
+      foreignField: "bugId",
+      as: "testCases"
+    }
+  },
+  {
+    $match: {
+      "testCases.status": "failed"
+    }
+  },
+  {
+    $group: {
+      _id: "$_id",
+      title: { $first: "$title" },
+      description: { $first: "$description" },
+      authorId: { $first: "$authorId" },
+      assignedToId: { $first: "$assignedToId" },
+      dateCreated: { $first: "$dateCreated" },
+      classification: { $first: "$classification" },
+      isClosed: { $first: "$isClosed" },
+      failingTestCases: {
+        $push: {
+          $filter: {
+            input: "$testCases",
+            cond: { $eq: ["$$this.status", "failed"] }
+          }
+        }
+      }
+    }
+  },
+  {
+    $project: {
+      title: 1,
+      description: 1,
+      authorId: 1,
+      assignedToId: 1,
+      dateCreated: 1,
+      classification: 1,
+      isClosed: 1,
+      failingTestCases: { $arrayElemAt: ["$failingTestCases", 0] }
+    }
+  }
+])
