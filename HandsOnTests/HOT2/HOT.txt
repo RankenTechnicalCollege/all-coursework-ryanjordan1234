@@ -1,0 +1,63 @@
+db.listingsAndReviews.insertOne({
+    name: "Cozy Downtown Apartment",
+    property_type: "Apartment", 
+    price: 150
+});
+
+db.listingsAndReviews.find({});
+
+db.listingsAndReviews.find({ property_type: "Apartment" });
+
+db.listingsAndReviews.updateOne(
+    { _id: ObjectId("specific_id_here") },
+    { $set: { name: "Updated Property Name" } }
+);
+
+db.listingsAndReviews.deleteOne({ _id: ObjectId("specific_id_here") });
+
+db.listingsAndReviews.find({ price: { $gt: 200 } });
+
+db.listingsAndReviews.createIndex({ name: 1 });
+
+db.listingsAndReviews.find({}, { name: 1, price: 1, _id: 0 });
+
+db.listingsAndReviews.find({}).limit(5);
+
+db.listingsAndReviews.findOne({ _id: ObjectId("specific_id_here") });
+
+db.listingsAndReviews.updateOne(
+    { _id: ObjectId("specific_id_here") },
+    { $set: { price: 250 } }
+);
+
+db.listingsAndReviews.deleteMany({ property_type: "House" });
+
+db.listingsAndReviews.find({ name: { $regex: "Luxury", $options: "i" } });
+
+db.createCollection("guests");
+
+db.guests.insertOne({
+    name: "John Doe",
+    age: 28,
+    email: "john.doe@example.com"
+});
+
+db.guests.find({});
+
+db.guests.updateOne(
+    { _id: ObjectId("specific_id_here") },
+    { $set: { age: 35 } }
+);
+
+db.listingsAndReviews.aggregate([
+    { $group: { _id: "$address.market", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 5 }
+]);
+
+db.guests.find({ age: { $gt: 30 } });
+
+db.listingsAndReviews.aggregate([
+    { $group: { _id: "$property_type", avgPrice: { $avg: "$price" } } },
+    { $sort: { avgPrice: -1 } }
+]);
