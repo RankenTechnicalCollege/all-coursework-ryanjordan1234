@@ -2,146 +2,194 @@ import express from 'express';
 import debug from 'debug';
 import { nanoid } from 'nanoid';
 
-const debugUser = debug('app:api:user');
+const debugBug = debug('app:api:bug');
 const router = express.Router();
 
-// In-memory storage for users
-const users = [
-    {userId: 1, username: 'user1', password: 'password1'},
-    {userId: 2, username: 'user2', password: 'password2'},
-    {userId: 3, username: 'user3', password: 'password3'},
-];
+// In-memory storage for bugs
+let bugs = [];
 
-// Existing routes
+// GET /api/bug/list
 router.get('/list', (req, res) => {
-    res.status(200).json(users);
+  debugBug('GET /api/bug/list');
+  res.json(bugs);
 });
 
-router.get('/:userId', (req, res) => {
-    const id = req.params.userId;
-    const user = users.find(user => user.userId == id);
-    if (user) {
-        res.status(200).json(user);
-    } else {
-        res.status(404).send(`User with ID: ${id} not found`);
-    }
-});
-
-// POST /api/user/register
-router.post('/register', (req, res) => {
-  debugUser('POST /api/user/register');
+// GET /api/bug/:bugId
+router.get('/:bugId', (req, res) => {
+  debugBug('GET /api/bug/:bugId');
   
-  const { email, password, givenName, familyName, role } = req.body;
+  const { bugId } = req.params;
+  
+  // Find bug by ID
+  const bug = bugs.find(b => b.id === bugId);
+  
+  if (!bug) {
+    return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
+  }
+  
+  debugBug(`Bug found: ${bugId}`);
+  res.json(bug);
+});
+
+// POST /api/bug/new
+router.post('/new', (req, res) => {
+  debugBug('POST /api/bug/new');
+  
+  const { title, description, stepsToReproduce } = req.body;
   
   // Validate required fields
-  if (!email) {
-    return res.status(400).type('text/plain').send('Email is required.');
+  if (!title) {
+    return res.status(400).type('text/plain').send('Title is required.');
   }
-  if (!password) {
-    return res.status(400).type('text/plain').send('Password is required.');
+  if (!description) {
+    return res.status(400).type('text/plain').send('Description is required.');
   }
-  if (!givenName) {
-    return res.status(400).type('text/plain').send('Given name is required.');
-  }
-  if (!familyName) {
-    return res.status(400).type('text/plain').send('Family name is required.');
-  }
-  if (!role) {
-    return res.status(400).type('text/plain').send('Role is required.');
+  if (!stepsToReproduce) {
+    return res.status(400).type('text/plain').send('Steps to reproduce is required.');
   }
   
-  // Check if user already exists
-  const existingUser = users.find(u => u.email === email);
-  if (existingUser) {
-    return res.status(400).type('text/plain').send('Email already registered.');
-  }
-  
-  // Create new user
-  const newUser = {
+  // Create new bug
+  const newBug = {
     id: nanoid(),
-    email,
-    password,
-    givenName,
-    familyName,
-    role,
+    title,
+    description,
+    stepsToReproduce,
+    author: null, // Will be set from authenticated user in Phase 5
     createdAt: new Date(),
-    lastUpdated: new Date()
+    lastUpdated: new Date(),
+    classification: 'unclassified', // Default value
+    classifiedOn: null,
+    classifiedBy: null,
+    assignedToUserId: null,
+    assignedToUserName: null,
+    assignedOn: null,
+    closed: false,
+    closedOn: null,
+    closedBy: null,
+    comments: [],
+    testCases: [],
+    hoursWorked: [],
+    fixedOn: null,
+    releaseVersion: null
   };
   
-  users.push(newUser);
-  debugUser(`User registered: ${email}`);
+  bugs.push(newBug);
+  debugBug(`Bug created: ${newBug.id}`);
   
-  res.status(200).type('text/plain').send('New user registered!');
+  res.status(200).type('text/plain').send('New bug reported!');
 });
 
-// POST /api/user/login
-router.post('/login', (req, res) => {
-  debugUser('POST /api/user/login');
+// PUT /api/bug/:bugId
+router.put('/:bugId', (req, res) => {
+  debugBug('PUT /api/bug/:bugId');
   
-  const { email, password } = req.body;
+  const { bugId } = req.params;
+  const { title, description, stepsToReproduce } = req.body;
   
-  // Validate credentials provided
-  if (!email || !password) {
-    return res.status(400).type('text/plain').send('Please enter your login credentials.');
-  }
+  // Find bug by ID
+  const bug = bugs.find(b => b.id === bugId);
   
-  // Find user by email and password
-  const user = users.find(u => u.email === email && u.password === password);
-  
-  if (user) {
-    debugUser(`User logged in: ${email}`);
-    return res.status(200).type('text/plain').send('Welcome back!');
-  } else {
-    debugUser(`Failed login attempt for: ${email}`);
-    return res.status(404).type('text/plain').send('Invalid login credential provided. Please try again.');
-  }
-});
-
-// PUT /api/user/:userId
-router.put('/:userId', (req, res) => {
-  debugUser('PUT /api/user/:userId');
-  
-  const { userId } = req.params;
-  const { password, fullName, givenName, familyName, role } = req.body;
-  
-  // Find user by ID
-  const user = users.find(u => u.id === userId);
-  
-  if (!user) {
-    return res.status(404).type('text/plain').send(`User ${userId} not found.`);
+  if (!bug) {
+    return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
   }
   
   // Update only provided fields
-  if (password !== undefined) user.password = password;
-  if (fullName !== undefined) user.fullName = fullName;
-  if (givenName !== undefined) user.givenName = givenName;
-  if (familyName !== undefined) user.familyName = familyName;
-  if (role !== undefined) user.role = role;
+  if (title !== undefined) bug.title = title;
+  if (description !== undefined) bug.description = description;
+  if (stepsToReproduce !== undefined) bug.stepsToReproduce = stepsToReproduce;
   
-  user.lastUpdated = new Date();
+  bug.lastUpdated = new Date();
   
-  debugUser(`User updated: ${userId}`);
-  res.status(200).type('text/plain').send('User updated!');
+  debugBug(`Bug updated: ${bugId}`);
+  res.status(200).type('text/plain').send('Bug updated!');
 });
 
-// DELETE /api/user/:userId
-router.delete('/:userId', (req, res) => {
-  debugUser('DELETE /api/user/:userId');
+// PUT /api/bug/:bugId/classify
+router.put('/:bugId/classify', (req, res) => {
+  debugBug('PUT /api/bug/:bugId/classify');
   
-  const { userId } = req.params;
+  const { bugId } = req.params;
+  const { classification } = req.body;
   
-  // Find user index
-  const userIndex = users.findIndex(u => u.id === userId);
-  
-  if (userIndex === -1) {
-    return res.status(404).type('text/plain').send(`User ${userId} not found.`);
+  // Validate required field
+  if (!classification) {
+    return res.status(400).type('text/plain').send('Classification is required.');
   }
   
-  // Remove user from array
-  users.splice(userIndex, 1);
+  // Find bug by ID
+  const bug = bugs.find(b => b.id === bugId);
   
-  debugUser(`User deleted: ${userId}`);
-  res.status(200).type('text/plain').send('User deleted!');
+  if (!bug) {
+    return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
+  }
+  
+  // Update classification fields
+  bug.classification = classification;
+  bug.classifiedOn = new Date();
+  bug.lastUpdated = new Date();
+  
+  debugBug(`Bug classified: ${bugId}`);
+  res.status(200).type('text/plain').send('Bug classified!');
 });
 
-export {router as userRouter};
+// PUT /api/bug/:bugId/assign
+router.put('/:bugId/assign', (req, res) => {
+  debugBug('PUT /api/bug/:bugId/assign');
+  
+  const { bugId } = req.params;
+  const { assignedToUserId, assignedToUserName } = req.body;
+  
+  // Validate required fields
+  if (!assignedToUserId) {
+    return res.status(400).type('text/plain').send('Assigned to user ID is required.');
+  }
+  if (!assignedToUserName) {
+    return res.status(400).type('text/plain').send('Assigned to user name is required.');
+  }
+  
+  // Find bug by ID
+  const bug = bugs.find(b => b.id === bugId);
+  
+  if (!bug) {
+    return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
+  }
+  
+  // Update assignment fields
+  bug.assignedToUserId = assignedToUserId;
+  bug.assignedToUserName = assignedToUserName;
+  bug.assignedOn = new Date();
+  bug.lastUpdated = new Date();
+  
+  debugBug(`Bug assigned: ${bugId} to ${assignedToUserName}`);
+  res.status(200).type('text/plain').send('Bug assigned!');
+});
+
+// PUT /api/bug/:bugId/close
+router.put('/:bugId/close', (req, res) => {
+  debugBug('PUT /api/bug/:bugId/close');
+  
+  const { bugId } = req.params;
+  const { closed } = req.body;
+  
+  // Validate required field
+  if (closed === undefined || closed === null) {
+    return res.status(400).type('text/plain').send('Closed status is required.');
+  }
+  
+  // Find bug by ID
+  const bug = bugs.find(b => b.id === bugId);
+  
+  if (!bug) {
+    return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
+  }
+  
+  // Update closed fields
+  bug.closed = closed;
+  bug.closedOn = closed ? new Date() : null;
+  bug.lastUpdated = new Date();
+  
+  debugBug(`Bug closed: ${bugId}`);
+  res.status(200).type('text/plain').send('Bug closed!');
+});
+
+export { router as bugRouter };
