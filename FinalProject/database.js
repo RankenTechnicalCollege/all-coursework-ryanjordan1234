@@ -117,6 +117,54 @@ async function deleteBug(bugId) {
   return result;
 }
 
+// ==================== COMMENT FUNCTIONS ====================
+
+/** Add a comment to a bug */
+async function addCommentToBug(bugId, comment) {
+  const db = await connect();
+  const result = await db.collection('bugs').updateOne(
+    { _id: new ObjectId(bugId) },
+    { $push: { comments: comment } }
+  );
+  return result;
+}
+
+// ==================== TEST CASE FUNCTIONS ====================
+
+/** Add a test case to a bug */
+async function addTestCaseToBug(bugId, testCase) {
+  const db = await connect();
+  const result = await db.collection('bugs').updateOne(
+    { _id: new ObjectId(bugId) },
+    { $push: { testCases: testCase } }
+  );
+  return result;
+}
+
+/** Update a test case in a bug */
+async function updateTestCase(bugId, testId, updates) {
+  const db = await connect();
+  const updateFields = {};
+  for (const [key, value] of Object.entries(updates)) {
+    updateFields[`testCases.$.${key}`] = value;
+  }
+  const result = await db.collection('bugs').updateOne(
+    { _id: new ObjectId(bugId), 'testCases._id': new ObjectId(testId) },
+    { $set: updateFields }
+  );
+  return result;
+}
+
+/** Delete a test case from a bug */
+async function deleteTestCase(bugId, testId) {
+  const db = await connect();
+  const result = await db.collection('bugs').updateOne(
+    { _id: new ObjectId(bugId) },
+    { $pull: { testCases: { _id: new ObjectId(testId) } } }
+  );
+  return result;
+}
+
 // export functions
 export {
   newId,
@@ -133,6 +181,10 @@ export {
   insertBug,
   updateBug,
   deleteBug,
+  addCommentToBug,
+  addTestCaseToBug,
+  updateTestCase,
+  deleteTestCase,
 };
 
 // test the database connection
