@@ -30,7 +30,6 @@ async function ping() {
   debugDb('Ping.');
 }
 
-// ==================== USER FUNCTIONS ====================
 
 /** Find all users */
 async function findAllUsers() {
@@ -98,6 +97,18 @@ async function findAllBugs() {
   return bugs;
 }
 
+/** Find bugs with filters, sorting, and pagination */
+async function findBugsWithFilters(filter, sort, skip, limit) {
+  const db = await connect();
+  const bugs = await db.collection('bugs')
+    .find(filter)
+    .sort(sort)
+    .skip(skip)
+    .limit(limit)
+    .toArray();
+  return bugs;
+}
+
 /** Find bug by ID */
 async function findBugById(bugId) {
   const db = await connect();
@@ -129,7 +140,6 @@ async function deleteBug(bugId) {
   return result;
 }
 
-// ==================== COMMENT FUNCTIONS ====================
 
 /** Add a comment to a bug */
 async function addCommentToBug(bugId, comment) {
@@ -141,7 +151,6 @@ async function addCommentToBug(bugId, comment) {
   return result;
 }
 
-// ==================== TEST CASE FUNCTIONS ====================
 
 /** Add a test case to a bug */
 async function addTestCaseToBug(bugId, testCase) {
@@ -183,12 +192,14 @@ export {
   connect,
   ping,
   findAllUsers,
+  findUsersWithFilters,
   findUserById,
   findUserByEmail,
   insertUser,
   updateUser,
   deleteUser,
   findAllBugs,
+  findBugsWithFilters,
   findBugById,
   insertBug,
   updateBug,
@@ -200,4 +211,4 @@ export {
 };
 
 // test the database connection
-ping();
+ping()
