@@ -40,6 +40,7 @@ async function findAllUsers() {
 
 /** Find users with filters, sorting, and pagination */
 async function findUsersWithFilters(filter, sort, skip, limit) {
+  debugDb('Finding users with filters:', filter, sort, skip, limit);
   const db = await connect();
   const users = await db.collection('users')
     .find(filter)

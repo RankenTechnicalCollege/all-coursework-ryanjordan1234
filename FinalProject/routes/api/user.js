@@ -37,7 +37,7 @@ const isValidObjectId = (id) => ObjectId.isValid(id);
 // GET /api/users
 router.get('/', async (req, res, next) => {
   try {
-    debugUser('GET /api/users');
+    debugUser('GET /api/user');
     
     const { keywords, role, maxAge, minAge, sortBy = 'givenName', pageSize = 5, pageNumber = 1 } = req.query;
     
@@ -106,7 +106,7 @@ router.get('/', async (req, res, next) => {
     const users = await db.findUsersWithFilters(filter, sort, skip, limit);
     res.json(users);
   } catch (err) {
-    debugUser('Error finding users:', err);
+    debugUser('Error finding user:', err);
     next(err);
   }
 });
@@ -114,7 +114,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/users/:userId
 router.get('/:userId', async (req, res, next) => {
   try {
-    debugUser('GET /api/users/:userId');
+    debugUser('GET /api/user/:userId');
     const { userId } = req.params;
     
     // Validate ObjectId
@@ -139,7 +139,7 @@ router.get('/:userId', async (req, res, next) => {
 // POST /api/users/register
 router.post('/register', async (req, res, next) => {
   try {
-    debugUser('POST /api/users/register');
+    debugUser('POST /api/user/register');
     
     // Validate request body with Joi
     const validateResult = registerSchema.validate(req.body);
