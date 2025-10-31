@@ -34,7 +34,7 @@ async function ping() {
 /** Find all users */
 async function findAllUsers() {
   const db = await connect();
-  const users = await db.collection('users').find({}).toArray();
+  const users = await db.collection('user').find({}).toArray();
   return users;
 }
 
@@ -42,7 +42,7 @@ async function findAllUsers() {
 async function findUsersWithFilters(filter, sort, skip, limit) {
   debugDb('Finding users with filters:', filter, sort, skip, limit);
   const db = await connect();
-  const users = await db.collection('users')
+  const users = await db.collection('user')
     .find(filter)
     .sort(sort)
     .skip(skip)
@@ -54,28 +54,28 @@ async function findUsersWithFilters(filter, sort, skip, limit) {
 /** Find user by ID */
 async function findUserById(userId) {
   const db = await connect();
-  const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-  return user;
+  const users = await db.collection('user').findOne({ _id: new ObjectId(userId) });
+  return users;
 }
 
 /** Find user by email */
 async function findUserByEmail(email) {
   const db = await connect();
-  const user = await db.collection('users').findOne({ email });
-  return user;
+  const users = await db.collection('user').findOne({ email });
+  return users;
 }
 
 /** Insert a new user */
 async function insertUser(user) {
   const db = await connect();
-  const result = await db.collection('users').insertOne(user);
+  const result = await db.collection('user').insertOne(user);
   return result;
 }
 
 /** Update user by ID */
 async function updateUser(userId, updates) {
   const db = await connect();
-  const result = await db.collection('users').updateOne(
+  const result = await db.collection('user').updateOne(
     { _id: new ObjectId(userId) },
     { $set: updates }
   );
@@ -85,7 +85,7 @@ async function updateUser(userId, updates) {
 /** Delete user by ID */
 async function deleteUser(userId) {
   const db = await connect();
-  const result = await db.collection('users').deleteOne({ _id: new ObjectId(userId) });
+  const result = await db.collection('user').deleteOne({ _id: new ObjectId(userId) });
   return result;
 }
 
@@ -94,14 +94,14 @@ async function deleteUser(userId) {
 /** Find all bugs */
 async function findAllBugs() {
   const db = await connect();
-  const bugs = await db.collection('bugs').find({}).toArray();
+  const bugs = await db.collection('bug').find({}).toArray();
   return bugs;
 }
 
 /** Find bugs with filters, sorting, and pagination */
 async function findBugsWithFilters(filter, sort, skip, limit) {
   const db = await connect();
-  const bugs = await db.collection('bugs')
+  const bugs = await db.collection('bug')
     .find(filter)
     .sort(sort)
     .skip(skip)
@@ -113,21 +113,21 @@ async function findBugsWithFilters(filter, sort, skip, limit) {
 /** Find bug by ID */
 async function findBugById(bugId) {
   const db = await connect();
-  const bug = await db.collection('bugs').findOne({ _id: new ObjectId(bugId) });
+  const bug = await db.collection('bug').findOne({ _id: new ObjectId(bugId) });
   return bug;
 }
 
 /** Insert a new bug */
 async function insertBug(bug) {
   const db = await connect();
-  const result = await db.collection('bugs').insertOne(bug);
+  const result = await db.collection('bug').insertOne(bug);
   return result;
 }
 
 /** Update bug by ID */
 async function updateBug(bugId, updates) {
   const db = await connect();
-  const result = await db.collection('bugs').updateOne(
+  const result = await db.collection('bug').updateOne(
     { _id: new ObjectId(bugId) },
     { $set: updates }
   );
@@ -137,7 +137,7 @@ async function updateBug(bugId, updates) {
 /** Delete bug by ID */
 async function deleteBug(bugId) {
   const db = await connect();
-  const result = await db.collection('bugs').deleteOne({ _id: new ObjectId(bugId) });
+  const result = await db.collection('bug').deleteOne({ _id: new ObjectId(bugId) });
   return result;
 }
 
@@ -145,7 +145,7 @@ async function deleteBug(bugId) {
 /** Add a comment to a bug */
 async function addCommentToBug(bugId, comment) {
   const db = await connect();
-  const result = await db.collection('bugs').updateOne(
+  const result = await db.collection('bug').updateOne(
     { _id: new ObjectId(bugId) },
     { $push: { comments: comment } }
   );
@@ -156,7 +156,7 @@ async function addCommentToBug(bugId, comment) {
 /** Add a test case to a bug */
 async function addTestCaseToBug(bugId, testCase) {
   const db = await connect();
-  const result = await db.collection('bugs').updateOne(
+  const result = await db.collection('bug').updateOne(
     { _id: new ObjectId(bugId) },
     { $push: { testCases: testCase } }
   );
@@ -170,7 +170,7 @@ async function updateTestCase(bugId, testId, updates) {
   for (const [key, value] of Object.entries(updates)) {
     updateFields[`testCases.$.${key}`] = value;
   }
-  const result = await db.collection('bugs').updateOne(
+  const result = await db.collection('bug').updateOne(
     { _id: new ObjectId(bugId), 'testCases._id': new ObjectId(testId) },
     { $set: updateFields }
   );
@@ -180,7 +180,7 @@ async function updateTestCase(bugId, testId, updates) {
 /** Delete a test case from a bug */
 async function deleteTestCase(bugId, testId) {
   const db = await connect();
-  const result = await db.collection('bugs').updateOne(
+  const result = await db.collection('bug').updateOne(
     { _id: new ObjectId(bugId) },
     { $pull: { testCases: { _id: new ObjectId(testId) } } }
   );

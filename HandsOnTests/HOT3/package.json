@@ -1,7 +1,6 @@
 {
-  "name": "hot3",
+  "name": "hot4-auth-products-api",
   "version": "1.0.0",
-  "description": "Products API for ecommerce store",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,7 +11,9 @@
     "mongodb": "^6.3.0",
     "dotenv": "^16.3.1",
     "joi": "^17.11.0",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "better-auth": "^1.0.0",
+    "cookie-parser": "^1.4.6"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

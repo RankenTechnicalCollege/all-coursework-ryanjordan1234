@@ -128,7 +128,7 @@ router.get('/:userId', async (req, res, next) => {
       return res.status(404).json({ error: `User ${userId} not found.` });
     }
     
-    debugUser(`User found: ${userId}`);
+    debugUser(`user found: ${userId}`);
     res.json(user);
   } catch (err) {
     debugUser('Error finding user:', err);
@@ -173,7 +173,7 @@ router.post('/register', async (req, res, next) => {
     const result = await db.insertUser(newUser);
     const userId = result.insertedId.toString();
     
-    debugUser(`User registered: ${email}`);
+    debugUser(`user registered: ${email}`);
     res.status(200).json({ message: 'New user registered!', userId });
   } catch (err) {
     debugUser('Error registering user:', err);
@@ -184,7 +184,7 @@ router.post('/register', async (req, res, next) => {
 // POST /api/users/login
 router.post('/login', async (req, res, next) => {
   try {
-    debugUser('POST /api/users/login');
+    debugUser('POST /api/user/login');
     
     // Validate request body with Joi
     const validateResult = loginSchema.validate(req.body);
@@ -206,7 +206,7 @@ router.post('/login', async (req, res, next) => {
     const passwordMatch = await bcrypt.compare(password, user.password);
     
     if (passwordMatch) {
-      debugUser(`User logged in: ${email}`);
+      debugUser(`user logged in: ${email}`);
       return res.status(200).json({ message: 'Welcome back!', userId: user._id.toString() });
     } else {
       debugUser(`Failed login attempt for: ${email}`);
@@ -221,7 +221,7 @@ router.post('/login', async (req, res, next) => {
 // PATCH /api/users/:userId
 router.patch('/:userId', async (req, res, next) => {
   try {
-    debugUser('PATCH /api/users/:userId');
+    debugUser('PATCH /api/user/:userId');
     
     const { userId } = req.params;
     
@@ -260,7 +260,7 @@ router.patch('/:userId', async (req, res, next) => {
     
     await db.updateUser(userId, updates);
     
-    debugUser(`User updated: ${userId}`);
+    debugUser(`user updated: ${userId}`);
     res.status(200).json({ message: `User ${userId} updated!`, userId });
   } catch (err) {
     debugUser('Error updating user:', err);
@@ -271,7 +271,7 @@ router.patch('/:userId', async (req, res, next) => {
 // DELETE /api/users/:userId
 router.delete('/:userId', async (req, res, next) => {
   try {
-    debugUser('DELETE /api/users/:userId');
+    debugUser('DELETE /api/user/:userId');
     
     const { userId } = req.params;
     
