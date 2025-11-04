@@ -17,7 +17,7 @@ const productSchema = Joi.object({
 router.get('/name/:productName', async (req, res, next) => {
   try {
     const { productName } = req.params;
-    const product = await db.findProductByName(productName);
+    const product = await db.findProductByName(productName.trim());
     
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });

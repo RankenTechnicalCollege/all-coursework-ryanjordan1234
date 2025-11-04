@@ -8,7 +8,7 @@ const validId = require('../../middleware/validId');
 const { updateUserSchema } = require('../../schemas/userSchemas');
 
 // GET /api/users - Get all users (admin only)
-router.get('/users', hasRole('admin'), async (req, res, next) => {
+router.get('/', hasRole('admin'), async (req, res, next) => {
   try {
     const users = await dbModule.findAllUsers();
     res.status(200).json(users);
@@ -17,20 +17,7 @@ router.get('/users', hasRole('admin'), async (req, res, next) => {
   }
 });
 
-// GET /api/users/:userId - Get user by ID (admin only)
-router.get('/users/:userId', hasRole('admin'), validId('userId'), isAuthenticated, async (req, res, next) => {
-  try {
-    const user = await dbModule.findUserById(req.params.userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    res.status(200).json(user);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/user/me - Get logged in user info
+// GET /api/users/me - Get logged in user info (MUST come before /:userId)
 router.get('/me', isAuthenticated, async (req, res, next) => {
   try {
     const user = await dbModule.findUserById(req.user.id);
@@ -43,7 +30,7 @@ router.get('/me', isAuthenticated, async (req, res, next) => {
   }
 });
 
-// PATCH /api/user/me - Update logged in user
+// PATCH /api/users/me - Update logged in user (MUST come before /:userId)
 router.patch('/me', isAuthenticated, validate(updateUserSchema), async (req, res, next) => {
   try {
     const userData = {};
@@ -66,6 +53,19 @@ router.patch('/me', isAuthenticated, validate(updateUserSchema), async (req, res
       message: 'User updated successfully',
       userId: req.user.id
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/users/:userId - Get user by ID (admin only)
+router.get('/:userId', hasRole('admin'), validId('userId'), async (req, res, next) => {
+  try {
+    const user = await dbModule.findUserById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(200).json(user);
   } catch (err) {
     next(err);
   }
