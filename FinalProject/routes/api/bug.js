@@ -384,4 +384,34 @@ router.patch('/:bugId/close', async (req, res, next) => {
   }
 });
 
+// DELETE /api/bugs/:bugId
+router.delete('/:bugId', async (req, res, next) => {
+  try {
+    debugBug('DELETE /api/bugs/:bugId');
+    
+    const { bugId } = req.params;
+    
+    // Validate ObjectId
+    if (!isValidObjectId(bugId)) {
+      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+    }
+    
+    // Find bug by ID first to check if it exists
+    const bug = await db.findBugById(bugId);
+    
+    if (!bug) {
+      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+    }
+    
+    // Delete the bug
+    const result = await db.deleteBug(bugId);
+    
+    debugBug(`Bug deleted: ${bugId}`);
+    res.status(200).json({ message: `Bug ${bugId} deleted!`, bugId });
+  } catch (err) {
+    debugBug('Error deleting bug:', err);
+    next(err);
+  }
+});
+
 export { router as bugRouter };
