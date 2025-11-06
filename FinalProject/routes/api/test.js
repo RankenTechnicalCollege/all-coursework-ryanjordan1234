@@ -45,7 +45,7 @@ router.get('/:bugId/tests', async (req, res, next) => {
     res.json(bug.testCases || []);
   } catch (err) {
     debugTest('Error finding test cases:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -82,7 +82,7 @@ router.get('/:bugId/tests/:testId', async (req, res, next) => {
     res.json(testCase);
   } catch (err) {
     debugTest('Error finding test case:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -132,7 +132,7 @@ router.post('/:bugId/tests', async (req, res, next) => {
     });
   } catch (err) {
     debugTest('Error adding test case:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -190,7 +190,7 @@ router.patch('/:bugId/tests/:testId', async (req, res, next) => {
     });
   } catch (err) {
     debugTest('Error updating test case:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -233,7 +233,7 @@ router.delete('/:bugId/tests/:testId', async (req, res, next) => {
     });
   } catch (err) {
     debugTest('Error deleting test case:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

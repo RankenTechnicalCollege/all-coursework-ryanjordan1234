@@ -212,4 +212,4 @@ export {
 };
 
 // test the database connection
-ping()
+//ping()

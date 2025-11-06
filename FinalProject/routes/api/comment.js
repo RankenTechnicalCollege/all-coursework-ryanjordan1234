@@ -34,11 +34,11 @@ router.get('/:bugId/comments', async (req, res, next) => {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    debugComment(`Found ${bug.comments.length} comments for bug ${bugId}`);
-    res.json(bug.comments);
+    debugComment(`Found ${bug.comments?.length || 0} comments for bug ${bugId}`);
+    res.json(bug.comments || []);
   } catch (err) {
     debugComment('Error finding comments:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -65,7 +65,7 @@ router.get('/:bugId/comments/:commentId', async (req, res, next) => {
     }
     
     // Find comment by ID
-    const comment = bug.comments.find(c => c._id.toString() === commentId);
+    const comment = bug.comments?.find(c => c._id.toString() === commentId);
     
     if (!comment) {
       return res.status(404).json({ error: `Comment ${commentId} not found.` });
@@ -75,7 +75,7 @@ router.get('/:bugId/comments/:commentId', async (req, res, next) => {
     res.json(comment);
   } catch (err) {
     debugComment('Error finding comment:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -123,7 +123,7 @@ router.post('/:bugId/comments', async (req, res, next) => {
     });
   } catch (err) {
     debugComment('Error adding comment:', err);
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
