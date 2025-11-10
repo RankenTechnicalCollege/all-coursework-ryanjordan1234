@@ -34,22 +34,31 @@ const updateSchema = Joi.object({
 // Helper function to validate ObjectId
 const isValidObjectId = (id) => ObjectId.isValid(id);
 
-// GET /api/users
+// GET /api/users - WITH SEARCH FUNCTIONALITY (Exercise 1)
 router.get('/', async (req, res, next) => {
   try {
-    debugUser('GET /api/user');
+    debugUser('GET /api/users');
     
-    const { keywords, role, maxAge, minAge, sortBy = 'givenName', pageSize = 5, pageNumber = 1 } = req.query;
+    // Extract query parameters with defaults
+    const { 
+      keywords, 
+      role, 
+      maxAge, 
+      minAge, 
+      sortBy = 'givenName', 
+      pageSize = 5, 
+      pageNumber = 1 
+    } = req.query;
     
     // Build query filter
     const filter = {};
     
-    // Text search
+    // Text search - only if keywords is provided and not falsy
     if (keywords) {
       filter.$text = { $search: keywords };
     }
     
-    // Role filter
+    // Role filter - only if role is provided and not falsy
     if (role) {
       filter.role = role;
     }
@@ -73,29 +82,35 @@ router.get('/', async (req, res, next) => {
       }
     }
     
-    // Build sort options
+    // Build sort options based on sortBy parameter
     let sort = {};
     switch (sortBy) {
       case 'givenName':
+        // given name ascending, family name ascending, created date ascending
         sort = { givenName: 1, familyName: 1, createdAt: 1 };
         break;
       case 'familyName':
+        // family name ascending, given name ascending, created date ascending
         sort = { familyName: 1, givenName: 1, createdAt: 1 };
         break;
       case 'role':
+        // role ascending, given name ascending, family name ascending, created date ascending
         sort = { role: 1, givenName: 1, familyName: 1, createdAt: 1 };
         break;
       case 'newest':
+        // created date descending
         sort = { createdAt: -1 };
         break;
       case 'oldest':
+        // created date ascending
         sort = { createdAt: 1 };
         break;
       default:
+        // Default to givenName sort
         sort = { givenName: 1, familyName: 1, createdAt: 1 };
     }
     
-    // Pagination
+    // Pagination calculations
     const limit = parseInt(pageSize);
     const skip = (parseInt(pageNumber) - 1) * limit;
     
@@ -103,10 +118,11 @@ router.get('/', async (req, res, next) => {
     debugUser('Sort:', sort);
     debugUser('Pagination:', { skip, limit });
     
+    // Query database with filters, sorting, and pagination
     const users = await db.findUsersWithFilters(filter, sort, skip, limit);
     res.json(users);
   } catch (err) {
-    debugUser('Error finding user:', err);
+    debugUser('Error finding users:', err);
     next(err);
   }
 });
@@ -114,7 +130,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/users/:userId
 router.get('/:userId', async (req, res, next) => {
   try {
-    debugUser('GET /api/user/:userId');
+    debugUser('GET /api/users/:userId');
     const { userId } = req.params;
     
     // Validate ObjectId
@@ -128,7 +144,7 @@ router.get('/:userId', async (req, res, next) => {
       return res.status(404).json({ error: `User ${userId} not found.` });
     }
     
-    debugUser(`user found: ${userId}`);
+    debugUser(`User found: ${userId}`);
     res.json(user);
   } catch (err) {
     debugUser('Error finding user:', err);
@@ -139,7 +155,7 @@ router.get('/:userId', async (req, res, next) => {
 // POST /api/users/register
 router.post('/register', async (req, res, next) => {
   try {
-    debugUser('POST /api/user/register');
+    debugUser('POST /api/users/register');
     
     // Validate request body with Joi
     const validateResult = registerSchema.validate(req.body);
@@ -173,7 +189,7 @@ router.post('/register', async (req, res, next) => {
     const result = await db.insertUser(newUser);
     const userId = result.insertedId.toString();
     
-    debugUser(`user registered: ${email}`);
+    debugUser(`User registered: ${email}`);
     res.status(200).json({ message: 'New user registered!', userId });
   } catch (err) {
     debugUser('Error registering user:', err);
@@ -184,7 +200,7 @@ router.post('/register', async (req, res, next) => {
 // POST /api/users/login
 router.post('/login', async (req, res, next) => {
   try {
-    debugUser('POST /api/user/login');
+    debugUser('POST /api/users/login');
     
     // Validate request body with Joi
     const validateResult = loginSchema.validate(req.body);
@@ -206,7 +222,7 @@ router.post('/login', async (req, res, next) => {
     const passwordMatch = await bcrypt.compare(password, user.password);
     
     if (passwordMatch) {
-      debugUser(`user logged in: ${email}`);
+      debugUser(`User logged in: ${email}`);
       return res.status(200).json({ message: 'Welcome back!', userId: user._id.toString() });
     } else {
       debugUser(`Failed login attempt for: ${email}`);
@@ -221,7 +237,7 @@ router.post('/login', async (req, res, next) => {
 // PATCH /api/users/:userId
 router.patch('/:userId', async (req, res, next) => {
   try {
-    debugUser('PATCH /api/user/:userId');
+    debugUser('PATCH /api/users/:userId');
     
     const { userId } = req.params;
     
@@ -260,7 +276,7 @@ router.patch('/:userId', async (req, res, next) => {
     
     await db.updateUser(userId, updates);
     
-    debugUser(`user updated: ${userId}`);
+    debugUser(`User updated: ${userId}`);
     res.status(200).json({ message: `User ${userId} updated!`, userId });
   } catch (err) {
     debugUser('Error updating user:', err);
@@ -271,7 +287,7 @@ router.patch('/:userId', async (req, res, next) => {
 // DELETE /api/users/:userId
 router.delete('/:userId', async (req, res, next) => {
   try {
-    debugUser('DELETE /api/user/:userId');
+    debugUser('DELETE /api/users/:userId');
     
     const { userId } = req.params;
     

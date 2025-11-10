@@ -35,27 +35,39 @@ const closeSchema = Joi.object({
 // Helper function to validate ObjectId
 const isValidObjectId = (id) => ObjectId.isValid(id);
 
-// GET /api/bugs
+// ============================================================
+// GET /api/bugs - WITH SEARCH FUNCTIONALITY (EXERCISE 2)
+// ============================================================
 router.get('/', async (req, res, next) => {
   try {
-    debugBug('GET /api/bug');
+    debugBug('GET /api/bugs');
     
-    const { keywords, classification, maxAge, minAge, closed, sortBy = 'newest', pageSize = 5, pageNumber = 1 } = req.query;
+    // Extract query parameters with defaults
+    const { 
+      keywords,           // Optional: text search
+      classification,     // Optional: filter by classification
+      maxAge,            // Optional: days since creation (show newer)
+      minAge,            // Optional: days since creation (show older)
+      closed,            // Optional: filter by closed status
+      sortBy = 'newest', // Default sort
+      pageSize = 5,      // Default page size
+      pageNumber = 1     // Default page number
+    } = req.query;
     
     // Build query filter
     const filter = {};
     
-    // Text search
+    // TEXT SEARCH: Use $text operator if keywords provided
     if (keywords) {
       filter.$text = { $search: keywords };
     }
     
-    // Classification filter
+    // CLASSIFICATION FILTER: Only if classification is provided
     if (classification) {
       filter.classification = classification;
     }
     
-    // Age filters (days since creation)
+    // AGE FILTERS: Days since creation
     if (maxAge || minAge) {
       filter.createdAt = {};
       
@@ -74,37 +86,48 @@ router.get('/', async (req, res, next) => {
       }
     }
     
-    // Closed filter
+    // CLOSED FILTER: Handle as boolean
+    // Default: show all bugs (no filter)
+    // closed=true: show only closed bugs
+    // closed=false: show only open bugs
     if (closed !== undefined && closed !== null && closed !== '') {
+      // Convert string "true"/"false" to boolean
       filter.closed = closed === 'true' || closed === true;
     }
     
-    // Build sort options
+    // BUILD SORT OPTIONS based on sortBy parameter
     let sort = {};
     switch (sortBy) {
       case 'newest':
+        // created date descending (newest first)
         sort = { createdAt: -1 };
         break;
       case 'oldest':
+        // created date ascending (oldest first)
         sort = { createdAt: 1 };
         break;
       case 'title':
+        // title ascending, created date descending (for stability)
         sort = { title: 1, createdAt: -1 };
         break;
       case 'classification':
+        // classification ascending, created date descending (for stability)
         sort = { classification: 1, createdAt: -1 };
         break;
       case 'assignedTo':
+        // assigned to name ascending, created date descending (for stability)
         sort = { assignedToUserName: 1, createdAt: -1 };
         break;
       case 'createdBy':
+        // created by name ascending, created date descending (for stability)
         sort = { author: 1, createdAt: -1 };
         break;
       default:
+        // Default to newest
         sort = { createdAt: -1 };
     }
     
-    // Pagination
+    // PAGINATION CALCULATIONS
     const limit = parseInt(pageSize);
     const skip = (parseInt(pageNumber) - 1) * limit;
     
@@ -112,6 +135,7 @@ router.get('/', async (req, res, next) => {
     debugBug('Sort:', sort);
     debugBug('Pagination:', { skip, limit });
     
+    // Query database with filters, sorting, and pagination
     const bugs = await db.findBugsWithFilters(filter, sort, skip, limit);
     res.json(bugs);
   } catch (err) {
@@ -120,7 +144,9 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// GET /api/bugs/:bugId
+// ============================================================
+// GET /api/bugs/:bugId - Get single bug by ID
+// ============================================================
 router.get('/:bugId', async (req, res, next) => {
   try {
     debugBug('GET /api/bugs/:bugId');
@@ -145,7 +171,9 @@ router.get('/:bugId', async (req, res, next) => {
   }
 });
 
-// POST /api/bugs
+// ============================================================
+// POST /api/bugs - Create a new bug
+// ============================================================
 router.post('/', async (req, res, next) => {
   try {
     debugBug('POST /api/bugs');
@@ -158,7 +186,7 @@ router.post('/', async (req, res, next) => {
     
     const { title, description, stepsToReproduce } = req.body;
     
-    // Create new bug
+    // Create new bug with all required fields
     const newBug = {
       title,
       description,
@@ -193,7 +221,9 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// PATCH /api/bugs/:bugId
+// ============================================================
+// PATCH /api/bugs/:bugId - Update bug title/description/steps
+// ============================================================
 router.patch('/:bugId', async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId');
@@ -239,7 +269,9 @@ router.patch('/:bugId', async (req, res, next) => {
   }
 });
 
-// PATCH /api/bugs/:bugId/classify
+// ============================================================
+// PATCH /api/bugs/:bugId/classify - Set bug classification
+// ============================================================
 router.patch('/:bugId/classify', async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId/classify');
@@ -283,7 +315,9 @@ router.patch('/:bugId/classify', async (req, res, next) => {
   }
 });
 
-// PATCH /api/bugs/:bugId/assign
+// ============================================================
+// PATCH /api/bugs/:bugId/assign - Assign bug to a user
+// ============================================================
 router.patch('/:bugId/assign', async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId/assign');
@@ -340,7 +374,9 @@ router.patch('/:bugId/assign', async (req, res, next) => {
   }
 });
 
-// PATCH /api/bugs/:bugId/close
+// ============================================================
+// PATCH /api/bugs/:bugId/close - Close or reopen a bug
+// ============================================================
 router.patch('/:bugId/close', async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId/close');
@@ -376,15 +412,17 @@ router.patch('/:bugId/close', async (req, res, next) => {
     
     await db.updateBug(bugId, updates);
     
-    debugBug(`Bug closed: ${bugId}`);
-    res.status(200).json({ message: `Bug ${bugId} closed!`, bugId });
+    debugBug(`Bug ${closed ? 'closed' : 'reopened'}: ${bugId}`);
+    res.status(200).json({ message: `Bug ${bugId} ${closed ? 'closed' : 'reopened'}!`, bugId });
   } catch (err) {
     debugBug('Error closing bug:', err);
     next(err);
   }
 });
 
-// DELETE /api/bugs/:bugId
+// ============================================================
+// DELETE /api/bugs/:bugId - Delete a bug
+// ============================================================
 router.delete('/:bugId', async (req, res, next) => {
   try {
     debugBug('DELETE /api/bugs/:bugId');
@@ -404,7 +442,7 @@ router.delete('/:bugId', async (req, res, next) => {
     }
     
     // Delete the bug
-    const result = await db.deleteBug(bugId);
+    await db.deleteBug(bugId);
     
     debugBug(`Bug deleted: ${bugId}`);
     res.status(200).json({ message: `Bug ${bugId} deleted!`, bugId });
