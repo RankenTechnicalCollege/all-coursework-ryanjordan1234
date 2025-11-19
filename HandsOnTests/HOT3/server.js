@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const productRoutes = require('./routes/api/product');
+const productRoutes = require('./routes/api/products');
 
+// Load environment variables first
 dotenv.config();
 
+// Initialize express app
 const app = express();
 const PORT = process.env.PORT || 2023;
 
