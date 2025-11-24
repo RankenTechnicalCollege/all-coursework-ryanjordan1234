@@ -30,6 +30,15 @@ async function ping() {
   debugDb('Ping.');
 }
 
+/** Get database instance */
+async function getDb() {
+  if (!_db) {
+    await connect();
+  }
+  return _db;
+}
+
+// ==================== USER FUNCTIONS ====================
 
 /** Find all users */
 async function findAllUsers() {
@@ -141,6 +150,7 @@ async function deleteBug(bugId) {
   return result;
 }
 
+// ==================== COMMENT FUNCTIONS ====================
 
 /** Add a comment to a bug */
 async function addCommentToBug(bugId, comment) {
@@ -152,6 +162,7 @@ async function addCommentToBug(bugId, comment) {
   return result;
 }
 
+// ==================== TEST CASE FUNCTIONS ====================
 
 /** Add a test case to a bug */
 async function addTestCaseToBug(bugId, testCase) {
@@ -187,29 +198,58 @@ async function deleteTestCase(bugId, testId) {
   return result;
 }
 
-// export functions
+// ==================== EDIT TRACKING FUNCTIONS ====================
+
+/** Insert edit record for audit trail */
+async function insertEdit(editRecord) {
+  const db = await connect();
+  const result = await db.collection('edit').insertOne(editRecord);
+  debugDb('Edit tracked:', editRecord);
+  return result;
+}
+
+/** Optional: Get edit history for a specific resource */
+async function getEditHistory(col, targetId) {
+  const db = await connect();
+  const edits = await db.collection('edit')
+    .find({ col, 'target.bugId': targetId })
+    .sort({ timestamp: -1 })
+    .toArray();
+  return edits;
+}
+
+// ==================== EXPORTS ====================
+
 export {
-  newId,
   connect,
   ping,
+  getDb,
+  newId,
+  // User functions
   findAllUsers,
-  findUsersWithFilters,
-  findUserById,
   findUserByEmail,
+  findUserById,
   insertUser,
   updateUser,
   deleteUser,
+  findUsersWithFilters,
+  // Bug functions
   findAllBugs,
-  findBugsWithFilters,
   findBugById,
   insertBug,
   updateBug,
   deleteBug,
+  findBugsWithFilters,
+  // Comment functions
   addCommentToBug,
+  // Test case functions
   addTestCaseToBug,
   updateTestCase,
   deleteTestCase,
+  // Edit tracking functions
+  insertEdit,
+  getEditHistory
 };
 
 // test the database connection
-//ping()
+// ping()
