@@ -44,7 +44,7 @@ app.use('/api/bugs', commentRouter);
 app.use('/api/bugs', testRouter);
 
 // 5. Static files - YOUR LINE IS HERE
-app.use(express.static('vite-project/dist'));
+app.use(express.static('frontend/dist'));
 
 // 6. Error handling middleware (must be last)
 app.use((err, req, res, next) => {

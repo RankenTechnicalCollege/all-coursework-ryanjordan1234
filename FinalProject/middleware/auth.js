@@ -4,10 +4,6 @@ import * as db from '../database.js';
 
 const debugAuth = debug('app:middleware:auth');
 
-/**
- * Middleware: isAuthenticated
- * Checks if user is logged in via session
- */
 export const isAuthenticated = (req, res, next) => {
   debugAuth('Checking authentication...');
   
@@ -23,10 +19,7 @@ export const isAuthenticated = (req, res, next) => {
   next();
 };
 
-/**
- * Middleware: hasAnyRole
- * Checks if user has any role (not anonymous)
- */
+
 export const hasAnyRole = (req, res, next) => {
   debugAuth('Checking if user has any role...');
   
@@ -151,10 +144,7 @@ export const hasPermission = (permission) => {
   };
 };
 
-/**
- * Helper middleware: Check if user can edit a specific bug
- * This combines multiple permissions: canEditAnyBug, canEditMyBug, canEditIfAssignedTo
- */
+
 export const canEditBug = async (req, res, next) => {
   debugAuth('Checking if user can edit this bug...');
   
