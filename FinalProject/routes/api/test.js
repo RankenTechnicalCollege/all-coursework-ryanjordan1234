@@ -3,6 +3,7 @@ import debug from 'debug';
 import Joi from 'joi';
 import { ObjectId } from 'mongodb';
 import * as db from '../../database.js';
+import { isAuthenticated, hasPermission } from '../../middleware/auth.js';
 
 const debugTest = debug('app:api:test');
 const router = express.Router();
@@ -23,18 +24,16 @@ const updateTestSchema = Joi.object({
 // Helper function to validate ObjectId
 const isValidObjectId = (id) => ObjectId.isValid(id);
 
-// GET /api/bugs/:bugId/tests
-router.get('/:bugId/tests', async (req, res, next) => {
+// GET /api/bugs/:bugId/tests - Requires canViewData permission
+router.get('/:bugId/tests', isAuthenticated, hasPermission('canViewData'), async (req, res, next) => {
   try {
     debugTest('GET /api/bugs/:bugId/tests');
     const { bugId } = req.params;
     
-    // Validate ObjectId
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
     
-    // Find bug by ID
     const bug = await db.findBugById(bugId);
     
     if (!bug) {
@@ -45,17 +44,16 @@ router.get('/:bugId/tests', async (req, res, next) => {
     res.json(bug.testCases || []);
   } catch (err) {
     debugTest('Error finding test cases:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 });
 
-// GET /api/bugs/:bugId/tests/:testId
-router.get('/:bugId/tests/:testId', async (req, res, next) => {
+// GET /api/bugs/:bugId/tests/:testId - Requires canViewData permission
+router.get('/:bugId/tests/:testId', isAuthenticated, hasPermission('canViewData'), async (req, res, next) => {
   try {
     debugTest('GET /api/bugs/:bugId/tests/:testId');
     const { bugId, testId } = req.params;
     
-    // Validate ObjectId
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
@@ -64,14 +62,12 @@ router.get('/:bugId/tests/:testId', async (req, res, next) => {
       return res.status(400).json({ error: `testId ${testId} is not a valid ObjectId.` });
     }
     
-    // Find bug by ID
     const bug = await db.findBugById(bugId);
     
     if (!bug) {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Find test case by ID
     const testCase = bug.testCases?.find(t => t._id.toString() === testId);
     
     if (!testCase) {
@@ -82,37 +78,33 @@ router.get('/:bugId/tests/:testId', async (req, res, next) => {
     res.json(testCase);
   } catch (err) {
     debugTest('Error finding test case:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 });
 
-// POST /api/bugs/:bugId/tests
-router.post('/:bugId/tests', async (req, res, next) => {
+// POST /api/bugs/:bugId/tests - Requires canAddTestCase permission
+router.post('/:bugId/tests', isAuthenticated, hasPermission('canAddTestCase'), async (req, res, next) => {
   try {
     debugTest('POST /api/bugs/:bugId/tests');
     const { bugId } = req.params;
     
-    // Validate ObjectId
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
     
-    // Validate request body with Joi
     const validateResult = createTestSchema.validate(req.body);
     if (validateResult.error) {
-      return res.status(400).json({ error: validateResult.error });
+      return res.status(400).json({ error: validateResult.error.details[0].message });
     }
     
     const { testName, description, status } = req.body;
     
-    // Find bug by ID
     const bug = await db.findBugById(bugId);
     
     if (!bug) {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Create new test case
     const newTestCase = {
       _id: new ObjectId(),
       testName,
@@ -122,7 +114,6 @@ router.post('/:bugId/tests', async (req, res, next) => {
       lastUpdated: new Date()
     };
     
-    // Add test case to bug's testCases array
     await db.addTestCaseToBug(bugId, newTestCase);
     
     debugTest(`Test case added to bug ${bugId}`);
@@ -132,17 +123,16 @@ router.post('/:bugId/tests', async (req, res, next) => {
     });
   } catch (err) {
     debugTest('Error adding test case:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 });
 
-// PATCH /api/bugs/:bugId/tests/:testId
-router.patch('/:bugId/tests/:testId', async (req, res, next) => {
+// PATCH /api/bugs/:bugId/tests/:testId - Requires canEditTestCase permission
+router.patch('/:bugId/tests/:testId', isAuthenticated, hasPermission('canEditTestCase'), async (req, res, next) => {
   try {
     debugTest('PATCH /api/bugs/:bugId/tests/:testId');
     const { bugId, testId } = req.params;
     
-    // Validate ObjectId
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
@@ -151,36 +141,31 @@ router.patch('/:bugId/tests/:testId', async (req, res, next) => {
       return res.status(400).json({ error: `testId ${testId} is not a valid ObjectId.` });
     }
     
-    // Validate request body with Joi
     const validateResult = updateTestSchema.validate(req.body);
     if (validateResult.error) {
-      return res.status(400).json({ error: validateResult.error });
+      return res.status(400).json({ error: validateResult.error.details[0].message });
     }
     
     const { testName, description, status } = req.body;
     
-    // Find bug by ID
     const bug = await db.findBugById(bugId);
     
     if (!bug) {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Find test case by ID
     const testCaseIndex = bug.testCases?.findIndex(t => t._id.toString() === testId);
     
     if (testCaseIndex === -1 || testCaseIndex === undefined) {
       return res.status(404).json({ error: `Test case ${testId} not found.` });
     }
     
-    // Build update object
     const updates = {};
     if (testName !== undefined) updates.testName = testName;
     if (description !== undefined) updates.description = description;
     if (status !== undefined) updates.status = status;
     updates.lastUpdated = new Date();
     
-    // Update test case
     await db.updateTestCase(bugId, testId, updates);
     
     debugTest(`Test case ${testId} updated`);
@@ -190,17 +175,16 @@ router.patch('/:bugId/tests/:testId', async (req, res, next) => {
     });
   } catch (err) {
     debugTest('Error updating test case:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 });
 
-// DELETE /api/bugs/:bugId/tests/:testId
-router.delete('/:bugId/tests/:testId', async (req, res, next) => {
+// DELETE /api/bugs/:bugId/tests/:testId - Requires canDeleteTestCase permission
+router.delete('/:bugId/tests/:testId', isAuthenticated, hasPermission('canDeleteTestCase'), async (req, res, next) => {
   try {
     debugTest('DELETE /api/bugs/:bugId/tests/:testId');
     const { bugId, testId } = req.params;
     
-    // Validate ObjectId
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
@@ -209,21 +193,18 @@ router.delete('/:bugId/tests/:testId', async (req, res, next) => {
       return res.status(400).json({ error: `testId ${testId} is not a valid ObjectId.` });
     }
     
-    // Find bug by ID
     const bug = await db.findBugById(bugId);
     
     if (!bug) {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Find test case by ID
     const testCaseIndex = bug.testCases?.findIndex(t => t._id.toString() === testId);
     
     if (testCaseIndex === -1 || testCaseIndex === undefined) {
       return res.status(404).json({ error: `Test case ${testId} not found.` });
     }
     
-    // Delete test case
     await db.deleteTestCase(bugId, testId);
     
     debugTest(`Test case ${testId} deleted`);
@@ -233,7 +214,7 @@ router.delete('/:bugId/tests/:testId', async (req, res, next) => {
     });
   } catch (err) {
     debugTest('Error deleting test case:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 });
 

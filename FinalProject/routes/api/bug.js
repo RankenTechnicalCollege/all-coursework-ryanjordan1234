@@ -3,10 +3,47 @@ import debug from 'debug';
 import Joi from 'joi';
 import { ObjectId } from 'mongodb';
 import * as db from '../../database.js';
-import { requireAuth } from '../../middleware/auth.js';
+import { 
+  isAuthenticated, 
+  hasPermission, 
+  canEditBug, 
+  canReassignBug, 
+  canClassifyBug 
+} from '../../middleware/auth.js';
 
 const debugBug = debug('app:api:bug');
 const router = express.Router();
+
+// Joi Schemas
+const createBugSchema = Joi.object({
+  title: Joi.string().required(),
+  description: Joi.string().required(),
+  stepsToReproduce: Joi.string().optional()
+});
+
+const updateBugSchema = Joi.object({
+  title: Joi.string().optional(),
+  description: Joi.string().optional(),
+  stepsToReproduce: Joi.string().optional(),
+  classification: Joi.string().valid('unclassified', 'approved', 'unapproved', 'duplicate').optional(),
+  assignedTo: Joi.string().email().optional(),
+  closed: Joi.boolean().optional()
+});
+
+const classifyBugSchema = Joi.object({
+  classification: Joi.string().valid('unclassified', 'approved', 'unapproved', 'duplicate').required()
+});
+
+const assignBugSchema = Joi.object({
+  assignedTo: Joi.string().email().required()
+});
+
+const closeBugSchema = Joi.object({
+  closed: Joi.boolean().required()
+});
+
+// Helper function to validate ObjectId
+const isValidObjectId = (id) => ObjectId.isValid(id);
 
 // Helper function to track edits
 const trackEdit = async (col, op, target, update, performedBy) => {
@@ -21,54 +58,23 @@ const trackEdit = async (col, op, target, update, performedBy) => {
   await db.insertEdit(editRecord);
 };
 
-// Joi Schemas
-const createBugSchema = Joi.object({
-  title: Joi.string().required(),
-  description: Joi.string().required(),
-  stepsToReproduce: Joi.string().required()
-});
-
-const updateBugSchema = Joi.object({
-  title: Joi.string().optional(),
-  description: Joi.string().optional(),
-  stepsToReproduce: Joi.string().optional()
-});
-
-const classifySchema = Joi.object({
-  classification: Joi.string().valid('approved', 'unapproved', 'duplicate', 'unclassified').required()
-});
-
-const assignSchema = Joi.object({
-  assignedToUserId: Joi.string().required()
-});
-
-const closeSchema = Joi.object({
-  closed: Joi.boolean().required()
-});
-
-// Helper function to validate ObjectId
-const isValidObjectId = (id) => ObjectId.isValid(id);
-
-// ============================================================
-// GET /api/bugs - WITH SEARCH FUNCTIONALITY (EXERCISE 2)
-// ============================================================
-router.get('/', requireAuth, async (req, res, next) => {
+// GET /api/bugs - Requires canViewData permission
+router.get('/', isAuthenticated, hasPermission('canViewData'), async (req, res, next) => {
   try {
     debugBug('GET /api/bugs');
     
-    // Extract query parameters with defaults
     const { 
-      keywords,
-      classification,
-      maxAge,
-      minAge,
+      keywords, 
+      classification, 
+      assignedTo,
       closed,
-      sortBy = 'newest',
-      pageSize = 5,
-      pageNumber = 1
+      maxAge, 
+      minAge, 
+      sortBy = 'newest', 
+      pageSize = 10, 
+      pageNumber = 1 
     } = req.query;
     
-    // Build query filter
     const filter = {};
     
     if (keywords) {
@@ -79,7 +85,14 @@ router.get('/', requireAuth, async (req, res, next) => {
       filter.classification = classification;
     }
     
-    // Age filters
+    if (assignedTo) {
+      filter.assignedTo = assignedTo;
+    }
+    
+    if (closed !== undefined) {
+      filter.closed = closed === 'true';
+    }
+    
     if (maxAge || minAge) {
       filter.createdOn = {};
       
@@ -96,12 +109,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       }
     }
     
-    // Closed filter
-    if (closed !== undefined && closed !== null && closed !== '') {
-      filter.closed = closed === 'true' || closed === true;
-    }
-    
-    // Build sort options
     let sort = {};
     switch (sortBy) {
       case 'newest':
@@ -117,16 +124,12 @@ router.get('/', requireAuth, async (req, res, next) => {
         sort = { classification: 1, createdOn: -1 };
         break;
       case 'assignedTo':
-        sort = { 'assignedTo.fullName': 1, createdOn: -1 };
-        break;
-      case 'createdBy':
-        sort = { 'createdBy.fullName': 1, createdOn: -1 };
+        sort = { assignedTo: 1, createdOn: -1 };
         break;
       default:
         sort = { createdOn: -1 };
     }
     
-    // Pagination
     const limit = parseInt(pageSize);
     const skip = (parseInt(pageNumber) - 1) * limit;
     
@@ -138,10 +141,8 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-// ============================================================
-// GET /api/bugs/:bugId - Get single bug by ID
-// ============================================================
-router.get('/:bugId', requireAuth, async (req, res, next) => {
+// GET /api/bugs/:bugId - Requires canViewData permission
+router.get('/:bugId', isAuthenticated, hasPermission('canViewData'), async (req, res, next) => {
   try {
     debugBug('GET /api/bugs/:bugId');
     const { bugId } = req.params;
@@ -164,14 +165,11 @@ router.get('/:bugId', requireAuth, async (req, res, next) => {
   }
 });
 
-// ============================================================
-// POST /api/bugs - Create a new bug
-// ============================================================
-router.post('/', requireAuth, async (req, res, next) => {
+// POST /api/bugs - Requires canCreateBug permission
+router.post('/', isAuthenticated, hasPermission('canCreateBug'), async (req, res, next) => {
   try {
     debugBug('POST /api/bugs');
     
-    // Validate request body
     const validateResult = createBugSchema.validate(req.body);
     if (validateResult.error) {
       return res.status(400).json({ error: validateResult.error.details[0].message });
@@ -179,67 +177,55 @@ router.post('/', requireAuth, async (req, res, next) => {
     
     const { title, description, stepsToReproduce } = req.body;
     
-    // Create new bug with authenticated user data
+    // Bugs are unclassified initially and assigned to the author
     const newBug = {
       title,
       description,
-      stepsToReproduce,
-      createdOn: new Date(),
-      createdBy: {
-        userId: req.user.userId,
-        email: req.user.email,
-        fullName: req.user.fullName
-      },
+      stepsToReproduce: stepsToReproduce || '',
       classification: 'unclassified',
+      author: req.user.email,
+      assignedTo: req.user.email, // Assigned to author initially
       closed: false,
-      classifiedOn: null,
-      classifiedBy: null,
-      assignedTo: null,
-      assignedOn: null,
-      assignedBy: null,
-      closedOn: null,
-      closedBy: null,
+      createdOn: new Date(),
+      createdBy: { email: req.user.email, fullName: req.user.fullName },
       lastUpdatedOn: new Date(),
-      lastUpdatedBy: {
-        email: req.user.email,
-        fullName: req.user.fullName
-      }
+      lastUpdatedBy: { email: req.user.email, fullName: req.user.fullName },
+      comments: [],
+      testCases: []
     };
     
     const result = await db.insertBug(newBug);
     const bugId = result.insertedId.toString();
     
-    // Track the edit
     await trackEdit(
       'bug',
-      'insert',
+      'create',
       { bugId },
       newBug,
       req.user.email
     );
     
     debugBug(`Bug created: ${bugId}`);
-    res.status(200).json({ message: 'New bug reported!', bugId });
+    res.status(201).json({ 
+      message: 'Bug created successfully!', 
+      bugId 
+    });
   } catch (err) {
     debugBug('Error creating bug:', err);
     next(err);
   }
 });
 
-// ============================================================
-// PATCH /api/bugs/:bugId - Update bug title/description/steps
-// ============================================================
-router.patch('/:bugId', requireAuth, async (req, res, next) => {
+// PATCH /api/bugs/:bugId - Complex authorization (canEditAnyBug OR canEditMyBug OR canEditIfAssignedTo)
+router.patch('/:bugId', isAuthenticated, canEditBug, async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId');
-    
     const { bugId } = req.params;
     
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
     
-    // Validate request body
     const validateResult = updateBugSchema.validate(req.body);
     if (validateResult.error) {
       return res.status(400).json({ error: validateResult.error.details[0].message });
@@ -253,13 +239,9 @@ router.patch('/:bugId', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Build update object
     const updates = {
       lastUpdatedOn: new Date(),
-      lastUpdatedBy: {
-        email: req.user.email,
-        fullName: req.user.fullName
-      }
+      lastUpdatedBy: { email: req.user.email, fullName: req.user.fullName }
     };
     
     const changedFields = {};
@@ -277,11 +259,9 @@ router.patch('/:bugId', requireAuth, async (req, res, next) => {
       changedFields.stepsToReproduce = stepsToReproduce;
     }
     
-    // Only update if there are changes
     if (Object.keys(changedFields).length > 0) {
       await db.updateBug(bugId, updates);
       
-      // Track the edit
       await trackEdit(
         'bug',
         'update',
@@ -299,21 +279,17 @@ router.patch('/:bugId', requireAuth, async (req, res, next) => {
   }
 });
 
-// ============================================================
-// PATCH /api/bugs/:bugId/classify - Set bug classification
-// ============================================================
-router.patch('/:bugId/classify', requireAuth, async (req, res, next) => {
+// PATCH /api/bugs/:bugId/classify - Complex authorization
+router.patch('/:bugId/classify', isAuthenticated, canClassifyBug, async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId/classify');
-    
     const { bugId } = req.params;
     
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
     
-    // Validate request body
-    const validateResult = classifySchema.validate(req.body);
+    const validateResult = classifyBugSchema.validate(req.body);
     if (validateResult.error) {
       return res.status(400).json({ error: validateResult.error.details[0].message });
     }
@@ -326,65 +302,49 @@ router.patch('/:bugId/classify', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Update classification fields
     const updates = {
       classification,
-      classifiedOn: new Date(),
-      classifiedBy: {
-        userId: req.user.userId,
-        email: req.user.email,
-        fullName: req.user.fullName
-      },
       lastUpdatedOn: new Date(),
-      lastUpdatedBy: {
-        email: req.user.email,
-        fullName: req.user.fullName
-      }
+      lastUpdatedBy: { email: req.user.email, fullName: req.user.fullName }
     };
     
     await db.updateBug(bugId, updates);
     
-    // Track the edit
     await trackEdit(
       'bug',
-      'update',
+      'classify',
       { bugId },
       { classification },
       req.user.email
     );
     
-    debugBug(`Bug classified: ${bugId}`);
-    res.status(200).json({ message: `Bug ${bugId} classified!`, bugId });
+    debugBug(`Bug ${bugId} classified as: ${classification}`);
+    res.status(200).json({ 
+      message: `Bug ${bugId} classified as ${classification}!`, 
+      bugId 
+    });
   } catch (err) {
     debugBug('Error classifying bug:', err);
     next(err);
   }
 });
 
-// ============================================================
-// PATCH /api/bugs/:bugId/assign - Assign bug to a user
-// ============================================================
-router.patch('/:bugId/assign', requireAuth, async (req, res, next) => {
+// PATCH /api/bugs/:bugId/assign - Complex authorization
+router.patch('/:bugId/assign', isAuthenticated, canReassignBug, async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId/assign');
-    
     const { bugId } = req.params;
     
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
     
-    // Validate request body
-    const validateResult = assignSchema.validate(req.body);
+    const validateResult = assignBugSchema.validate(req.body);
     if (validateResult.error) {
       return res.status(400).json({ error: validateResult.error.details[0].message });
     }
     
-    const { assignedToUserId } = req.body;
-    
-    if (!isValidObjectId(assignedToUserId)) {
-      return res.status(400).json({ error: `assignedToUserId ${assignedToUserId} is not a valid ObjectId.` });
-    }
+    const { assignedTo } = req.body;
     
     const bug = await db.findBugById(bugId);
     
@@ -392,67 +352,69 @@ router.patch('/:bugId/assign', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Find user to get their info
-    const user = await db.findUserById(assignedToUserId);
-    
-    if (!user) {
-      return res.status(400).json({ error: 'Assigned user not found.' });
+    // Verify the user being assigned exists and has appropriate role
+    const assignee = await db.findUserByEmail(assignedTo);
+    if (!assignee) {
+      return res.status(400).json({ 
+        error: `User ${assignedTo} not found.` 
+      });
     }
     
-    // Update assignment fields
+    // Check if assignee has canBeAssignedTo permission
+    const db_instance = await db.getDb();
+    const assigneeRoles = Array.isArray(assignee.role) ? assignee.role : [assignee.role];
+    const roleDocuments = await db_instance.collection('role')
+      .find({ name: { $in: assigneeRoles } })
+      .toArray();
+    
+    const hasAssignPermission = roleDocuments.some(roleDoc => 
+      roleDoc.permissions && roleDoc.permissions.includes('canBeAssignedTo')
+    );
+    
+    if (!hasAssignPermission) {
+      return res.status(400).json({ 
+        error: `User ${assignedTo} cannot be assigned bugs (must be Developer, Business Analyst, or Quality Analyst).` 
+      });
+    }
+    
     const updates = {
-      assignedTo: {
-        userId: assignedToUserId,
-        email: user.email,
-        fullName: user.fullName
-      },
-      assignedOn: new Date(),
-      assignedBy: {
-        userId: req.user.userId,
-        email: req.user.email,
-        fullName: req.user.fullName
-      },
+      assignedTo,
       lastUpdatedOn: new Date(),
-      lastUpdatedBy: {
-        email: req.user.email,
-        fullName: req.user.fullName
-      }
+      lastUpdatedBy: { email: req.user.email, fullName: req.user.fullName }
     };
     
     await db.updateBug(bugId, updates);
     
-    // Track the edit
     await trackEdit(
       'bug',
-      'update',
+      'assign',
       { bugId },
-      { assignedTo: user.fullName },
+      { assignedTo },
       req.user.email
     );
     
-    debugBug(`Bug assigned: ${bugId} to ${user.fullName}`);
-    res.status(200).json({ message: `Bug ${bugId} assigned!`, bugId });
+    debugBug(`Bug ${bugId} assigned to: ${assignedTo}`);
+    res.status(200).json({ 
+      message: `Bug ${bugId} assigned to ${assignedTo}!`, 
+      bugId 
+    });
   } catch (err) {
     debugBug('Error assigning bug:', err);
     next(err);
   }
 });
 
-// ============================================================
-// PATCH /api/bugs/:bugId/close - Close or reopen a bug
-// ============================================================
-router.patch('/:bugId/close', requireAuth, async (req, res, next) => {
+// PATCH /api/bugs/:bugId/close - Requires canCloseAnyBug permission
+router.patch('/:bugId/close', isAuthenticated, hasPermission('canCloseAnyBug'), async (req, res, next) => {
   try {
     debugBug('PATCH /api/bugs/:bugId/close');
-    
     const { bugId } = req.params;
     
     if (!isValidObjectId(bugId)) {
       return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
     
-    // Validate request body
-    const validateResult = closeSchema.validate(req.body);
+    const validateResult = closeBugSchema.validate(req.body);
     if (validateResult.error) {
       return res.status(400).json({ error: validateResult.error.details[0].message });
     }
@@ -465,75 +427,29 @@ router.patch('/:bugId/close', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
     
-    // Update closed fields
     const updates = {
       closed,
-      closedOn: closed ? new Date() : null,
-      closedBy: closed ? {
-        userId: req.user.userId,
-        email: req.user.email,
-        fullName: req.user.fullName
-      } : null,
       lastUpdatedOn: new Date(),
-      lastUpdatedBy: {
-        email: req.user.email,
-        fullName: req.user.fullName
-      }
+      lastUpdatedBy: { email: req.user.email, fullName: req.user.fullName }
     };
     
     await db.updateBug(bugId, updates);
     
-    // Track the edit
     await trackEdit(
       'bug',
-      'update',
+      closed ? 'close' : 'reopen',
       { bugId },
       { closed },
       req.user.email
     );
     
-    debugBug(`Bug ${closed ? 'closed' : 'reopened'}: ${bugId}`);
-    res.status(200).json({ message: `Bug ${bugId} ${closed ? 'closed' : 'reopened'}!`, bugId });
+    debugBug(`Bug ${bugId} ${closed ? 'closed' : 'reopened'}`);
+    res.status(200).json({ 
+      message: `Bug ${bugId} ${closed ? 'closed' : 'reopened'}!`, 
+      bugId 
+    });
   } catch (err) {
-    debugBug('Error closing bug:', err);
-    next(err);
-  }
-});
-
-// ============================================================
-// DELETE /api/bugs/:bugId - Delete a bug
-// ============================================================
-router.delete('/:bugId', requireAuth, async (req, res, next) => {
-  try {
-    debugBug('DELETE /api/bugs/:bugId');
-    
-    const { bugId } = req.params;
-    
-    if (!isValidObjectId(bugId)) {
-      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
-    }
-    
-    const bug = await db.findBugById(bugId);
-    
-    if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
-    }
-    
-    // Track the delete before actually deleting
-    await trackEdit(
-      'bug',
-      'delete',
-      { bugId },
-      {},
-      req.user.email
-    );
-    
-    await db.deleteBug(bugId);
-    
-    debugBug(`Bug deleted: ${bugId}`);
-    res.status(200).json({ message: `Bug ${bugId} deleted!`, bugId });
-  } catch (err) {
-    debugBug('Error deleting bug:', err);
+    debugBug('Error closing/reopening bug:', err);
     next(err);
   }
 });
