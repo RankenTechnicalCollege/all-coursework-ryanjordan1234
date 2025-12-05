@@ -1,220 +1,318 @@
 import express from 'express';
+import { 
+  findBugById,          // NOT getBugById
+  addTestCaseToBug,     // ✅ Correct
+  updateTestCase,       // ✅ Correct
+  deleteTestCase        // ✅ Correct
+} from '../../database.js';
 import debug from 'debug';
-import Joi from 'joi';
 import { ObjectId } from 'mongodb';
-import * as db from '../../database.js';
-import { isAuthenticated, hasPermission } from '../../middleware/auth.js';
+import { 
+  isAuthenticated,      // ← Authentication check
+  hasPermission         // ← Permission check
+} from '../../middleware/auth.js';
 
-const debugTest = debug('app:api:test');
+const debugTests = debug('app:tests');
 const router = express.Router();
 
-// Joi Schemas
-const createTestSchema = Joi.object({
-  testName: Joi.string().required(),
-  description: Joi.string().required(),
-  status: Joi.string().valid('passed', 'failed', 'pending').default('pending')
-});
+// GET all test cases for a bug
+router.get('/:bugId/tests', isAuthenticated, hasPermission('canViewData'), async (req, res) => {
+  const { bugId } = req.params;
 
-const updateTestSchema = Joi.object({
-  testName: Joi.string().optional(),
-  description: Joi.string().optional(),
-  status: Joi.string().valid('passed', 'failed', 'pending').optional()
-});
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
 
-// Helper function to validate ObjectId
-const isValidObjectId = (id) => ObjectId.isValid(id);
-
-// GET /api/bugs/:bugId/tests - Requires canViewData permission
-router.get('/:bugId/tests', isAuthenticated, hasPermission('canViewData'), async (req, res, next) => {
   try {
-    debugTest('GET /api/bugs/:bugId/tests');
-    const { bugId } = req.params;
-    
-    if (!isValidObjectId(bugId)) {
-      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
-    }
-    
-    const bug = await db.findBugById(bugId);
+    const bug = await findBugById(bugId);
     
     if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+      return res.status(404).json({ message: 'Bug not found' });
     }
-    
-    debugTest(`Found ${bug.testCases?.length || 0} test cases for bug ${bugId}`);
-    res.json(bug.testCases || []);
+
+    // Return test cases array (or empty array if no tests)
+    const testCases = bug.testCases || [];
+    debugTests(`Retrieved ${testCases.length} test cases for bug ${bugId}`);
+    res.status(200).json(testCases);
   } catch (err) {
-    debugTest('Error finding test cases:', err);
-    next(err);
+    debugTests(`Error retrieving test cases: ${err}`);
+    res.status(500).json({ message: 'Error retrieving test cases' });
   }
 });
 
-// GET /api/bugs/:bugId/tests/:testId - Requires canViewData permission
-router.get('/:bugId/tests/:testId', isAuthenticated, hasPermission('canViewData'), async (req, res, next) => {
+// GET a specific test case
+router.get('/:bugId/tests/:testId', isAuthenticated, hasPermission('canViewData'), async (req, res) => {
+  const { bugId, testId } = req.params;
+
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
+
+  if (!ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid test ID' });
+  }
+
   try {
-    debugTest('GET /api/bugs/:bugId/tests/:testId');
-    const { bugId, testId } = req.params;
-    
-    if (!isValidObjectId(bugId)) {
-      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
-    }
-    
-    if (!isValidObjectId(testId)) {
-      return res.status(400).json({ error: `testId ${testId} is not a valid ObjectId.` });
-    }
-    
-    const bug = await db.findBugById(bugId);
+    const bug = await findBugById(bugId);
     
     if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+      return res.status(404).json({ message: 'Bug not found' });
     }
-    
+
+    // Find the specific test case
     const testCase = bug.testCases?.find(t => t._id.toString() === testId);
     
     if (!testCase) {
-      return res.status(404).json({ error: `Test case ${testId} not found.` });
+      return res.status(404).json({ message: 'Test case not found' });
     }
-    
-    debugTest(`Test case found: ${testId}`);
-    res.json(testCase);
+
+    debugTests(`Retrieved test case ${testId} for bug ${bugId}`);
+    res.status(200).json(testCase);
   } catch (err) {
-    debugTest('Error finding test case:', err);
-    next(err);
+    debugTests(`Error retrieving test case: ${err}`);
+    res.status(500).json({ message: 'Error retrieving test case' });
   }
 });
 
-// POST /api/bugs/:bugId/tests - Requires canAddTestCase permission
-router.post('/:bugId/tests', isAuthenticated, hasPermission('canAddTestCase'), async (req, res, next) => {
+// POST - Add a test case to a bug
+router.post('/:bugId/tests', isAuthenticated, hasPermission('canCreateTest'), async (req, res) => {
+  const { bugId } = req.params;
+  const { title, description, steps, expectedResult, actualResult, status } = req.body;
+
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
+
+  if (!title || title.trim() === '') {
+    return res.status(400).json({ message: 'Test title is required' });
+  }
+
+  // Create new test case object
+  const newTestCase = {
+    _id: new ObjectId(),
+    title: title.trim(),
+    description: description || '',
+    steps: steps || [],
+    expectedResult: expectedResult || '',
+    actualResult: actualResult || '',
+    status: status || 'pending', // pending, passed, failed
+    createdAt: new Date(),
+    createdBy: {
+      userId: req.user.id,
+      email: req.user.email,
+      fullName: req.user.fullName
+    }
+  };
+
   try {
-    debugTest('POST /api/bugs/:bugId/tests');
-    const { bugId } = req.params;
-    
-    if (!isValidObjectId(bugId)) {
-      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
-    }
-    
-    const validateResult = createTestSchema.validate(req.body);
-    if (validateResult.error) {
-      return res.status(400).json({ error: validateResult.error.details[0].message });
-    }
-    
-    const { testName, description, status } = req.body;
-    
-    const bug = await db.findBugById(bugId);
-    
+    // Check if bug exists
+    const bug = await findBugById(bugId);
     if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+      return res.status(404).json({ message: 'Bug not found' });
     }
+
+    // Add test case to bug
+    const result = await addTestCaseToBug(bugId, newTestCase);
     
-    const newTestCase = {
-      _id: new ObjectId(),
-      testName,
-      description,
-      status: status || 'pending',
-      createdAt: new Date(),
-      lastUpdated: new Date()
-    };
-    
-    await db.addTestCaseToBug(bugId, newTestCase);
-    
-    debugTest(`Test case added to bug ${bugId}`);
-    res.status(200).json({ 
-      message: 'Test case added successfully!', 
-      testId: newTestCase._id.toString() 
-    });
+    if (result.modifiedCount === 1) {
+      debugTests(`Test case added to bug ${bugId} by ${req.user.email}`);
+      res.status(201).json({ 
+        message: 'Test case added successfully',
+        testCase: newTestCase 
+      });
+    } else {
+      res.status(500).json({ message: 'Error adding test case' });
+    }
   } catch (err) {
-    debugTest('Error adding test case:', err);
-    next(err);
+    debugTests(`Error adding test case: ${err}`);
+    res.status(500).json({ message: 'Error adding test case' });
   }
 });
 
-// PATCH /api/bugs/:bugId/tests/:testId - Requires canEditTestCase permission
-router.patch('/:bugId/tests/:testId', isAuthenticated, hasPermission('canEditTestCase'), async (req, res, next) => {
+// PUT - Update a test case (full update)
+router.put('/:bugId/tests/:testId', isAuthenticated, hasPermission('canEditTest'), async (req, res) => {
+  const { bugId, testId } = req.params;
+  const updates = req.body;
+
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
+
+  if (!ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid test ID' });
+  }
+
+  // Add update metadata
+  updates.lastUpdatedOn = new Date();
+  updates.lastUpdatedBy = {
+    userId: req.user.id,
+    email: req.user.email,
+    fullName: req.user.fullName
+  };
+
   try {
-    debugTest('PATCH /api/bugs/:bugId/tests/:testId');
-    const { bugId, testId } = req.params;
-    
-    if (!isValidObjectId(bugId)) {
-      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
-    }
-    
-    if (!isValidObjectId(testId)) {
-      return res.status(400).json({ error: `testId ${testId} is not a valid ObjectId.` });
-    }
-    
-    const validateResult = updateTestSchema.validate(req.body);
-    if (validateResult.error) {
-      return res.status(400).json({ error: validateResult.error.details[0].message });
-    }
-    
-    const { testName, description, status } = req.body;
-    
-    const bug = await db.findBugById(bugId);
-    
+    // Check if bug and test exist
+    const bug = await findBugById(bugId);
     if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+      return res.status(404).json({ message: 'Bug not found' });
     }
-    
-    const testCaseIndex = bug.testCases?.findIndex(t => t._id.toString() === testId);
-    
-    if (testCaseIndex === -1 || testCaseIndex === undefined) {
-      return res.status(404).json({ error: `Test case ${testId} not found.` });
+
+    const testExists = bug.testCases?.some(t => t._id.toString() === testId);
+    if (!testExists) {
+      return res.status(404).json({ message: 'Test case not found' });
     }
+
+    // Update test case
+    const result = await updateTestCase(bugId, testId, updates);
     
-    const updates = {};
-    if (testName !== undefined) updates.testName = testName;
-    if (description !== undefined) updates.description = description;
-    if (status !== undefined) updates.status = status;
-    updates.lastUpdated = new Date();
-    
-    await db.updateTestCase(bugId, testId, updates);
-    
-    debugTest(`Test case ${testId} updated`);
-    res.status(200).json({ 
-      message: `Test case ${testId} updated!`, 
-      testId 
-    });
+    if (result.modifiedCount === 1) {
+      debugTests(`Test case ${testId} updated in bug ${bugId}`);
+      res.status(200).json({ message: 'Test case updated successfully' });
+    } else {
+      res.status(500).json({ message: 'Error updating test case' });
+    }
   } catch (err) {
-    debugTest('Error updating test case:', err);
-    next(err);
+    debugTests(`Error updating test case: ${err}`);
+    res.status(500).json({ message: 'Error updating test case' });
   }
 });
 
-// DELETE /api/bugs/:bugId/tests/:testId - Requires canDeleteTestCase permission
-router.delete('/:bugId/tests/:testId', isAuthenticated, hasPermission('canDeleteTestCase'), async (req, res, next) => {
+// PATCH - Update a test case (partial update)
+router.patch('/:bugId/tests/:testId', isAuthenticated, hasPermission('canEditTest'), async (req, res) => {
+  const { bugId, testId } = req.params;
+  const updates = req.body;
+
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
+
+  if (!ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid test ID' });
+  }
+
+  // Add update metadata
+  updates.lastUpdatedOn = new Date();
+  updates.lastUpdatedBy = {
+    userId: req.user.id,
+    email: req.user.email,
+    fullName: req.user.fullName
+  };
+
   try {
-    debugTest('DELETE /api/bugs/:bugId/tests/:testId');
-    const { bugId, testId } = req.params;
-    
-    if (!isValidObjectId(bugId)) {
-      return res.status(400).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+    // Check if bug and test exist
+    const bug = await findBugById(bugId);
+    if (!bug) {
+      return res.status(404).json({ message: 'Bug not found' });
     }
-    
-    if (!isValidObjectId(testId)) {
-      return res.status(400).json({ error: `testId ${testId} is not a valid ObjectId.` });
+
+    const testExists = bug.testCases?.some(t => t._id.toString() === testId);
+    if (!testExists) {
+      return res.status(404).json({ message: 'Test case not found' });
     }
+
+    // Update test case
+    const result = await updateTestCase(bugId, testId, updates);
     
-    const bug = await db.findBugById(bugId);
+    if (result.modifiedCount === 1) {
+      debugTests(`Test case ${testId} patched in bug ${bugId}`);
+      res.status(200).json({ message: 'Test case updated successfully' });
+    } else {
+      res.status(500).json({ message: 'Error updating test case' });
+    }
+  } catch (err) {
+    debugTests(`Error patching test case: ${err}`);
+    res.status(500).json({ message: 'Error updating test case' });
+  }
+});
+
+// PATCH - Update test case status only
+router.patch('/:bugId/tests/:testId/status', isAuthenticated, hasPermission('canEditTest'), async (req, res) => {
+  const { bugId, testId } = req.params;
+  const { status } = req.body;
+
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
+
+  if (!ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid test ID' });
+  }
+
+  if (!status || !['pending', 'passed', 'failed'].includes(status)) {
+    return res.status(400).json({ message: 'Valid status is required (pending, passed, failed)' });
+  }
+
+  const updates = {
+    status,
+    lastUpdatedOn: new Date(),
+    lastUpdatedBy: {
+      userId: req.user.id,
+      email: req.user.email,
+      fullName: req.user.fullName
+    }
+  };
+
+  try {
+    const bug = await findBugById(bugId);
+    if (!bug) {
+      return res.status(404).json({ message: 'Bug not found' });
+    }
+
+    const testExists = bug.testCases?.some(t => t._id.toString() === testId);
+    if (!testExists) {
+      return res.status(404).json({ message: 'Test case not found' });
+    }
+
+    const result = await updateTestCase(bugId, testId, updates);
+    
+    if (result.modifiedCount === 1) {
+      debugTests(`Test case ${testId} status updated to ${status}`);
+      res.status(200).json({ message: 'Test case status updated successfully' });
+    } else {
+      res.status(500).json({ message: 'Error updating test case status' });
+    }
+  } catch (err) {
+    debugTests(`Error updating test case status: ${err}`);
+    res.status(500).json({ message: 'Error updating test case status' });
+  }
+});
+
+// DELETE - Delete a test case
+router.delete('/:bugId/tests/:testId', isAuthenticated, hasPermission('canDeleteTest'), async (req, res) => {
+  const { bugId, testId } = req.params;
+
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(400).json({ message: 'Invalid bug ID' });
+  }
+
+  if (!ObjectId.isValid(testId)) {
+    return res.status(400).json({ message: 'Invalid test ID' });
+  }
+
+  try {
+    const bug = await findBugById(bugId);
     
     if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+      return res.status(404).json({ message: 'Bug not found' });
     }
-    
-    const testCaseIndex = bug.testCases?.findIndex(t => t._id.toString() === testId);
-    
-    if (testCaseIndex === -1 || testCaseIndex === undefined) {
-      return res.status(404).json({ error: `Test case ${testId} not found.` });
+
+    const testExists = bug.testCases?.some(t => t._id.toString() === testId);
+    if (!testExists) {
+      return res.status(404).json({ message: 'Test case not found' });
     }
+
+    // Delete test case
+    const result = await deleteTestCase(bugId, testId);
     
-    await db.deleteTestCase(bugId, testId);
-    
-    debugTest(`Test case ${testId} deleted`);
-    res.status(200).json({ 
-      message: `Test case ${testId} deleted!`, 
-      testId 
-    });
+    if (result.modifiedCount === 1) {
+      debugTests(`Test case ${testId} deleted from bug ${bugId}`);
+      res.status(200).json({ message: 'Test case deleted successfully' });
+    } else {
+      res.status(500).json({ message: 'Error deleting test case' });
+    }
   } catch (err) {
-    debugTest('Error deleting test case:', err);
-    next(err);
+    debugTests(`Error deleting test case: ${err}`);
+    res.status(500).json({ message: 'Error deleting test case' });
   }
 });
 

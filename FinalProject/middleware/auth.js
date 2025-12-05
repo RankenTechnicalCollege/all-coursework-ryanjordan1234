@@ -1,296 +1,241 @@
-// middleware/auth.js
+import { auth } from '../lib/auth.js';
+import { findUserById } from '../database.js';  // ← CORRECT: findUserById (not getUserById)
 import debug from 'debug';
-import * as db from '../database.js';
 
-const debugAuth = debug('app:middleware:auth');
-
-export const isAuthenticated = (req, res, next) => {
-  debugAuth('Checking authentication...');
-  
-  if (!req.session || !req.session.user) {
-    debugAuth('Authentication failed - no session');
-    return res.status(401).json({ 
-      error: 'Unauthorized. Please log in.' 
-    });
-  }
-  
-  req.user = req.session.user;
-  debugAuth(`User authenticated: ${req.user.email}`);
-  next();
-};
-
-
-export const hasAnyRole = (req, res, next) => {
-  debugAuth('Checking if user has any role...');
-  
-  if (!req.user || !req.user.role) {
-    debugAuth('Authorization failed - no role assigned');
-    return res.status(403).json({ 
-      error: 'Forbidden. You must have a role assigned to perform this action.' 
-    });
-  }
-  
-  debugAuth(`User has role: ${req.user.role}`);
-  next();
-};
+const debugAuth = debug('app:auth');
 
 /**
- * Middleware: hasRole
- * Checks if user has one of the specified roles
- * @param {Array<string>} allowedRoles - Array of allowed role names
+ * Middleware to check if user is authenticated
  */
-export const hasRole = (allowedRoles) => {
-  return async (req, res, next) => {
-    debugAuth(`Checking if user has one of these roles: ${allowedRoles.join(', ')}`);
+export const isAuthenticated = async (req, res, next) => {
+  try {
+    const session = await auth.api.getSession({ headers: req.headers });
     
-    if (!req.user || !req.user.role) {
-      debugAuth('Authorization failed - no role found');
-      return res.status(403).json({ 
-        error: 'Forbidden. User role not found.' 
+    if (!session) {
+      debugAuth('Authentication failed - no session');
+      return res.status(401).json({ 
+        message: 'Authentication required. Please log in.' 
       });
     }
     
-    // Fetch user's full role data from database to get permissions
-    const user = await db.findUserById(req.user.userId);
+    const user = await findUserById(session.user.id);  // ← CORRECT: findUserById
+    
     if (!user) {
-      return res.status(403).json({ error: 'User not found.' });
-    }
-    
-    // Support both single role string and array of roles
-    const userRoles = Array.isArray(user.role) ? user.role : [user.role];
-    
-    const hasRequiredRole = userRoles.some(role => allowedRoles.includes(role));
-    
-    if (!hasRequiredRole) {
-      debugAuth(`Authorization failed - user roles [${userRoles.join(', ')}] not in allowed roles`);
-      return res.status(403).json({ 
-        error: `Forbidden. This action requires one of these roles: ${allowedRoles.join(', ')}` 
+      debugAuth('Authentication failed - user not found');
+      return res.status(401).json({ 
+        message: 'User not found.' 
       });
     }
     
-    debugAuth(`User authorized with roles: ${userRoles.join(', ')}`);
+    // Attach user to request
+    req.user = {
+      id: user._id.toString(),
+      email: user.email,
+      fullName: user.fullName,
+      givenName: user.givenName,
+      familyName: user.familyName,
+      role: user.role
+    };
+    
+    req.session = session;
+    
+    debugAuth(`User authenticated: ${user.email}`);
     next();
-  };
+  } catch (err) {
+    debugAuth(`Authentication error: ${err}`);
+    return res.status(401).json({ 
+      message: 'Invalid or expired session.' 
+    });
+  }
 };
 
 /**
- * Middleware: hasPermission
- * Checks if user has a specific permission based on their role
- * @param {string} permission - Permission name (e.g., 'canEditAnyUser')
+ * Get role permissions from database
  */
-export const hasPermission = (permission) => {
+async function getRolePermissions(role) {
+  if (!role) return [];
+  
+  try {
+    const { getDb } = await import('../database.js');
+    const db = await getDb();
+    const roles = Array.isArray(role) ? role : [role];
+    
+    const roleDocuments = await db.collection('role')
+      .find({ name: { $in: roles } })
+      .toArray();
+    
+    const permissions = new Set();
+    roleDocuments.forEach(roleDoc => {
+      if (roleDoc.permissions && Array.isArray(roleDoc.permissions)) {
+        roleDoc.permissions.forEach(perm => permissions.add(perm));
+      }
+    });
+    
+    return Array.from(permissions);
+  } catch (err) {
+    debugAuth(`Error fetching role permissions: ${err}`);
+    return [];
+  }
+}
+
+/**
+ * Middleware factory to check specific permissions
+ */
+export function hasPermission(requiredPermission) {
   return async (req, res, next) => {
-    debugAuth(`Checking permission: ${permission}`);
-    
-    if (!req.user || !req.user.userId) {
-      debugAuth('Permission check failed - no user');
-      return res.status(403).json({ 
-        error: 'Forbidden. User not authenticated.' 
-      });
-    }
-    
     try {
-      // Fetch user's full data including roles
-      const user = await db.findUserById(req.user.userId);
-      if (!user || !user.role) {
-        debugAuth('Permission check failed - user or role not found');
-        return res.status(403).json({ 
-          error: 'Forbidden. User role not found.' 
+      if (!req.user) {
+        return res.status(401).json({ 
+          message: 'Authentication required.' 
         });
       }
       
-      // Get role documents from database
-      const db_instance = await db.getDb();
+      const permissions = await getRolePermissions(req.user.role);
       
-      // Support both single role string and array of roles
-      const userRoles = Array.isArray(user.role) ? user.role : [user.role];
-      
-      // Fetch all role documents for the user's roles
-      const roleDocuments = await db_instance.collection('role')
-        .find({ name: { $in: userRoles } })
-        .toArray();
-      
-      if (!roleDocuments || roleDocuments.length === 0) {
-        debugAuth('Permission check failed - role documents not found');
+      if (!permissions.includes(requiredPermission)) {
+        debugAuth(`Permission denied for ${req.user.email}: requires ${requiredPermission}`);
         return res.status(403).json({ 
-          error: 'Forbidden. Role configuration not found.' 
+          message: 'Forbidden. You do not have permission to perform this action.' 
         });
       }
       
-      // Check if any of the user's roles has the required permission
-      const hasPermission = roleDocuments.some(roleDoc => 
-        roleDoc.permissions && roleDoc.permissions.includes(permission)
-      );
-      
-      if (!hasPermission) {
-        debugAuth(`Permission denied - user lacks ${permission}`);
-        return res.status(403).json({ 
-          error: `Forbidden. You do not have permission: ${permission}` 
-        });
-      }
-      
-      debugAuth(`Permission granted: ${permission}`);
-      
-      // Attach role documents to request for potential use in route handlers
-      req.userRoles = roleDocuments;
-      
+      debugAuth(`Permission granted for ${req.user.email}: ${requiredPermission}`);
       next();
-    } catch (error) {
-      debugAuth('Error checking permission:', error);
+    } catch (err) {
+      debugAuth(`Permission check error: ${err}`);
       return res.status(500).json({ 
-        error: 'Internal server error during permission check.' 
+        message: 'Error checking permissions.' 
       });
     }
   };
-};
+}
 
-
-export const canEditBug = async (req, res, next) => {
-  debugAuth('Checking if user can edit this bug...');
-  
+/**
+ * Check if user can edit a specific bug
+ */
+export async function canEditBug(req, res, next) {
   try {
-    const bugId = req.params.bugId;
-    const bug = await db.findBugById(bugId);
-    
-    if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+    if (!req.user) {
+      return res.status(401).json({ 
+        message: 'Authentication required.' 
+      });
     }
     
-    // Get user's permissions
-    const user = await db.findUserById(req.user.userId);
-    const db_instance = await db.getDb();
-    const userRoles = Array.isArray(user.role) ? user.role : [user.role];
-    const roleDocuments = await db_instance.collection('role')
-      .find({ name: { $in: userRoles } })
-      .toArray();
+    const { bugId } = req.params;
+    const { findBugById } = await import('../database.js');  // ← CORRECT: findBugById
+    const bug = await findBugById(bugId);
     
-    const permissions = roleDocuments.flatMap(role => role.permissions || []);
+    if (!bug) {
+      return res.status(404).json({ 
+        message: `Bug ${bugId} not found.` 
+      });
+    }
     
-    // Check permissions in order of precedence
+    const permissions = await getRolePermissions(req.user.role);
+    
+    // Can edit if: has canEditAnyBug, OR is author with canEditMyBug, OR is assigned with canEditIfAssignedTo
     if (permissions.includes('canEditAnyBug')) {
-      debugAuth('User can edit any bug');
       return next();
     }
     
     if (permissions.includes('canEditMyBug') && bug.author === req.user.email) {
-      debugAuth('User can edit their own bug');
       return next();
     }
     
     if (permissions.includes('canEditIfAssignedTo') && bug.assignedTo === req.user.email) {
-      debugAuth('User can edit bug assigned to them');
       return next();
     }
     
-    debugAuth('User cannot edit this bug');
+    debugAuth(`Edit denied for ${req.user.email} on bug ${bugId}`);
     return res.status(403).json({ 
-      error: 'Forbidden. You do not have permission to edit this bug.' 
+      message: 'Forbidden. You do not have permission to edit this bug.' 
     });
-    
-  } catch (error) {
-    debugAuth('Error checking bug edit permission:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+  } catch (err) {
+    debugAuth(`canEditBug error: ${err}`);
+    return res.status(500).json({ 
+      message: 'Error checking permissions.' 
+    });
   }
-};
+}
 
 /**
- * Helper middleware: Check if user can reassign a specific bug
+ * Check if user can reassign a bug
  */
-export const canReassignBug = async (req, res, next) => {
-  debugAuth('Checking if user can reassign this bug...');
-  
+export async function canReassignBug(req, res, next) {
   try {
-    const bugId = req.params.bugId;
-    const bug = await db.findBugById(bugId);
-    
-    if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+    if (!req.user) {
+      return res.status(401).json({ 
+        message: 'Authentication required.' 
+      });
     }
     
-    // Get user's permissions
-    const user = await db.findUserById(req.user.userId);
-    const db_instance = await db.getDb();
-    const userRoles = Array.isArray(user.role) ? user.role : [user.role];
-    const roleDocuments = await db_instance.collection('role')
-      .find({ name: { $in: userRoles } })
-      .toArray();
+    const { bugId } = req.params;
+    const { findBugById } = await import('../database.js');  // ← CORRECT: findBugById
+    const bug = await findBugById(bugId);
     
-    const permissions = roleDocuments.flatMap(role => role.permissions || []);
+    if (!bug) {
+      return res.status(404).json({ 
+        message: `Bug ${bugId} not found.` 
+      });
+    }
     
-    // Check permissions
+    const permissions = await getRolePermissions(req.user.role);
+    
     if (permissions.includes('canReassignAnyBug')) {
-      debugAuth('User can reassign any bug');
       return next();
     }
     
-    if (permissions.includes('canReassignIfAssignedTo') && bug.assignedTo === req.user.email) {
-      debugAuth('User can reassign bug assigned to them');
+    if (permissions.includes('canReassignMyBug') && bug.author === req.user.email) {
       return next();
     }
     
-    if (permissions.includes('canEditMyBug') && bug.author === req.user.email) {
-      debugAuth('User can reassign their own bug');
-      return next();
-    }
-    
-    debugAuth('User cannot reassign this bug');
+    debugAuth(`Reassign denied for ${req.user.email} on bug ${bugId}`);
     return res.status(403).json({ 
-      error: 'Forbidden. You do not have permission to reassign this bug.' 
+      message: 'Forbidden. You do not have permission to reassign this bug.' 
     });
-    
-  } catch (error) {
-    debugAuth('Error checking bug reassign permission:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+  } catch (err) {
+    debugAuth(`canReassignBug error: ${err}`);
+    return res.status(500).json({ 
+      message: 'Error checking permissions.' 
+    });
   }
-};
+}
 
 /**
- * Helper middleware: Check if user can classify a specific bug
+ * Check if user can classify a bug
  */
-export const canClassifyBug = async (req, res, next) => {
-  debugAuth('Checking if user can classify this bug...');
-  
+export async function canClassifyBug(req, res, next) {
   try {
-    const bugId = req.params.bugId;
-    const bug = await db.findBugById(bugId);
+    if (!req.user) {
+      return res.status(401).json({ 
+        message: 'Authentication required.' 
+      });
+    }
+    
+    const { bugId } = req.params;
+    const { findBugById } = await import('../database.js');  // ← CORRECT: findBugById
+    const bug = await findBugById(bugId);
     
     if (!bug) {
-      return res.status(404).json({ error: `Bug ${bugId} not found.` });
+      return res.status(404).json({ 
+        message: `Bug ${bugId} not found.` 
+      });
     }
     
-    // Get user's permissions
-    const user = await db.findUserById(req.user.userId);
-    const db_instance = await db.getDb();
-    const userRoles = Array.isArray(user.role) ? user.role : [user.role];
-    const roleDocuments = await db_instance.collection('role')
-      .find({ name: { $in: userRoles } })
-      .toArray();
+    const permissions = await getRolePermissions(req.user.role);
     
-    const permissions = roleDocuments.flatMap(role => role.permissions || []);
-    
-    // Check permissions
     if (permissions.includes('canClassifyAnyBug')) {
-      debugAuth('User can classify any bug');
       return next();
     }
     
-    if (permissions.includes('canEditIfAssignedTo') && bug.assignedTo === req.user.email) {
-      debugAuth('User can classify bug assigned to them');
-      return next();
-    }
-    
-    if (permissions.includes('canEditMyBug') && bug.author === req.user.email) {
-      debugAuth('User can classify their own bug');
-      return next();
-    }
-    
-    debugAuth('User cannot classify this bug');
+    debugAuth(`Classify denied for ${req.user.email} on bug ${bugId}`);
     return res.status(403).json({ 
-      error: 'Forbidden. You do not have permission to classify this bug.' 
+      message: 'Forbidden. You do not have permission to classify this bug.' 
     });
-    
-  } catch (error) {
-    debugAuth('Error checking bug classify permission:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+  } catch (err) {
+    debugAuth(`canClassifyBug error: ${err}`);
+    return res.status(500).json({ 
+      message: 'Error checking permissions.' 
+    });
   }
-};
+}
