@@ -9,75 +9,68 @@ import { MongoClient } from 'mongodb';
 
 const roles = [
   {
-    name: 'Developer',
-    permissions: [
-      'canViewData',
-      'canCreateBug',
-      'canEditMyBug',
-      'canEditIfAssignedTo',
-      'canReassignIfAssignedTo',
-      'canBeAssignedTo',
-      'canLogHours',
-      'canApplyFixInVersion',
-      'canAssignVersionDate',
-      'canAddComment'
-    ]
+    role: 'user',  // Changed from 'name' to 'role'
+    canViewData: true,
+    canCreateBug: true,
+    canEditMyBug: true,
+    canComment: true,
+    canCreateTest: false,
+    canEditTest: false,
+    canDeleteTest: false,
+    canEditAnyBug: false,
+    canEditIfAssignedTo: false,
+    canReassignAnyBug: false,
+    canReassignMyBug: false,
+    canClassifyAnyBug: false,
+    canDeleteBug: false
   },
   {
-    name: 'Quality Analyst',
-    permissions: [
-      'canViewData',
-      'canCreateBug',
-      'canEditMyBug',
-      'canEditIfAssignedTo',
-      'canReassignIfAssignedTo',
-      'canBeAssignedTo',
-      'canAddComment',
-      'canAddTestCase',
-      'canEditTestCase',
-      'canDeleteTestCase'
-    ]
+    role: 'developer',
+    canViewData: true,
+    canCreateBug: true,
+    canEditMyBug: true,
+    canEditIfAssignedTo: true,
+    canComment: true,
+    canCreateTest: true,
+    canEditTest: true,
+    canDeleteTest: false,
+    canEditAnyBug: false,
+    canReassignAnyBug: false,
+    canReassignMyBug: true,
+    canClassifyAnyBug: false,
+    canDeleteBug: false
   },
   {
-    name: 'Business Analyst',
-    permissions: [
-      'canViewData',
-      'canCreateBug',
-      'canEditAnyBug',
-      'canCloseAnyBug',
-      'canClassifyAnyBug',
-      'canReassignAnyBug',
-      'canEditMyBug',
-      'canEditIfAssignedTo',
-      'canReassignIfAssignedTo',
-      'canBeAssignedTo',
-      'canAddComment'
-    ]
+    role: 'tester',
+    canViewData: true,
+    canCreateBug: true,
+    canEditMyBug: true,
+    canComment: true,
+    canCreateTest: true,
+    canEditTest: true,
+    canDeleteTest: true,
+    canEditAnyBug: false,
+    canEditIfAssignedTo: false,
+    canReassignAnyBug: false,
+    canReassignMyBug: false,
+    canClassifyAnyBug: true,
+    canDeleteBug: false
   },
   {
-    name: 'Product Manager',
-    permissions: [
-      'canViewData',
-      'canCreateBug',
-      'canEditMyBug',
-      'canEditIfAssignedTo',
-      'canReassignIfAssignedTo',
-      'canAddComment'
-    ]
-  },
-  {
-    name: 'Technical Manager',
-    permissions: [
-      'canEditAnyUser',
-      'canViewData',
-      'canAssignRoles',
-      'canCreateBug',
-      'canReassignAnyBug',
-      'canEditMyBug',
-      'canEditIfAssignedTo',
-      'canReassignIfAssignedTo',
-      'canAddComment'
-    ]
+    role: 'admin',
+    canViewData: true,
+    canCreateBug: true,
+    canEditMyBug: true,
+    canEditAnyBug: true,
+    canEditIfAssignedTo: true,
+    canReassignAnyBug: true,
+    canReassignMyBug: true,
+    canClassifyAnyBug: true,
+    canComment: true,
+    canCreateTest: true,
+    canEditTest: true,
+    canDeleteTest: true,
+    canDeleteBug: true
   }
 ];
 
@@ -85,11 +78,11 @@ async function initializeRoles() {
   let client;
   
   try {
-    const dbUrl = process.env.DB_URL;
+    const dbUrl = process.env.MONGO_URI;  // Changed from DB_URL to MONGO_URI
     const dbName = process.env.DB_NAME;
     
     if (!dbUrl || !dbName) {
-      throw new Error('DB_URL and DB_NAME must be set in environment variables');
+      throw new Error('MONGO_URI and DB_NAME must be set in environment variables');
     }
     
     console.log('Connecting to database...');
@@ -102,15 +95,16 @@ async function initializeRoles() {
     console.log('Inserting new roles...');
     const result = await db.collection('role').insertMany(roles);
     
-    console.log(`Successfully inserted ${result.insertedCount} roles:`);
+    console.log(`✅ Successfully inserted ${result.insertedCount} roles:`);
     roles.forEach(role => {
-      console.log(`  - ${role.name} (${role.permissions.length} permissions)`);
+      const permCount = Object.keys(role).filter(k => k.startsWith('can')).length;
+      console.log(`  - ${role.role} (${permCount} permissions)`);
     });
     
-    console.log('\nRoles initialization complete!');
+    console.log('\n✅ Roles initialization complete!');
     
   } catch (error) {
-    console.error('Error initializing roles:', error);
+    console.error('❌ Error initializing roles:', error);
     process.exit(1);
   } finally {
     if (client) {

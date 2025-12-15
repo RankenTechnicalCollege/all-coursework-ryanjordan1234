@@ -2,28 +2,52 @@ const express = require('express');
 const Joi = require('joi');
 const { ObjectId } = require('mongodb');
 const db = require('../../database');
+const isAuthenticated = require('../../middleware/isAuthenticated');
 
 const router = express.Router();
 
 // Joi validation schema
 const productSchema = Joi.object({
-  name: Joi.string().required(),
-  description: Joi.string().required(),
+  name: Joi.string().min(2).max(100).required(),
+  description: Joi.string().min(10).max(1000).required(),
   category: Joi.string().required(),
-  price: Joi.number().required()
+  price: Joi.number().min(0).required(),
+  stock: Joi.number().integer().min(0).default(0),
+  imageUrl: Joi.string().uri().optional().allow('')
 });
 
-// GET /api/products/name/:productName - Get product by name (MUST come before /:productId)
-router.get('/name/:productName', async (req, res, next) => {
+// Update schema (all fields optional)
+const updateProductSchema = Joi.object({
+  name: Joi.string().min(2).max(100).optional(),
+  description: Joi.string().min(10).max(1000).optional(),
+  category: Joi.string().optional(),
+  price: Joi.number().min(0).optional(),
+  stock: Joi.number().integer().min(0).optional(),
+  imageUrl: Joi.string().uri().optional().allow('')
+}).min(1); // At least one field required
+
+// GET /api/products/search?name=query - Search products by name
+router.get('/search', async (req, res, next) => {
   try {
-    const { productName } = req.params;
-    const product = await db.findProductByName(productName.trim());
+    const { name } = req.query;
     
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required'
+      });
     }
+
+    const database = await db.connect();
+    const products = await database.collection('products').find({
+      name: { $regex: name.trim(), $options: 'i' }
+    }).toArray();
     
-    res.status(200).json(product);
+    res.status(200).json({
+      success: true,
+      data: products,
+      count: products.length
+    });
   } catch (err) {
     next(err);
   }
@@ -33,7 +57,10 @@ router.get('/name/:productName', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const products = await db.findAllProducts();
-    res.status(200).json(products);
+    res.status(200).json({
+      success: true,
+      data: products
+    });
   } catch (err) {
     next(err);
   }
@@ -46,97 +73,144 @@ router.get('/:productId', async (req, res, next) => {
     
     // Validate ObjectId
     if (!ObjectId.isValid(productId)) {
-      return res.status(404).json({ message: 'Invalid product ID' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format'
+      });
     }
     
     const product = await db.findProductById(productId);
     
     if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
     }
     
-    res.status(200).json(product);
+    res.status(200).json({
+      success: true,
+      data: product
+    });
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/products - Create new product
-router.post('/', async (req, res, next) => {
+// POST /api/products - Create new product (Protected)
+router.post('/', isAuthenticated, async (req, res, next) => {
   try {
     // Validate request body
     const { error, value } = productSchema.validate(req.body);
     
     if (error) {
-      return res.status(400).json({ message: error.details[0].message });
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message
+      });
     }
     
-    const productId = await db.createProduct(value);
+    // Add metadata
+    const productData = {
+      ...value,
+      createdBy: req.user.id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
     
-    res.status(200).json({
+    const productId = await db.createProduct(productData);
+    
+    res.status(201).json({
+      success: true,
       message: 'Product created successfully',
-      productId: productId
+      data: {
+        productId: productId.toString()
+      }
     });
   } catch (err) {
     next(err);
   }
 });
 
-// PATCH /api/products/:productId - Update product
-router.patch('/:productId', async (req, res, next) => {
+// PUT /api/products/:productId - Update product (Protected)
+router.put('/:productId', isAuthenticated, async (req, res, next) => {
   try {
     const { productId } = req.params;
     
     // Validate ObjectId
     if (!ObjectId.isValid(productId)) {
-      return res.status(404).json({ message: 'Invalid product ID' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format'
+      });
     }
     
     // Check if product exists
     const existingProduct = await db.findProductById(productId);
     if (!existingProduct) {
-      return res.status(404).json({ message: 'Product not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
     }
     
     // Validate request body
-    const { error, value } = productSchema.validate(req.body);
+    const { error, value } = updateProductSchema.validate(req.body);
     
     if (error) {
-      return res.status(400).json({ message: error.details[0].message });
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message
+      });
     }
     
-    const result = await db.updateProduct(productId, value);
+    // Add updated timestamp
+    const updateData = {
+      ...value,
+      updatedAt: new Date()
+    };
+    
+    await db.updateProduct(productId, updateData);
     
     res.status(200).json({
+      success: true,
       message: 'Product updated successfully',
-      productId: productId
+      data: {
+        productId: productId
+      }
     });
   } catch (err) {
     next(err);
   }
 });
 
-// DELETE /api/products/:productId - Delete product
-router.delete('/:productId', async (req, res, next) => {
+// DELETE /api/products/:productId - Delete product (Protected)
+router.delete('/:productId', isAuthenticated, async (req, res, next) => {
   try {
     const { productId } = req.params;
     
     // Validate ObjectId
     if (!ObjectId.isValid(productId)) {
-      return res.status(404).json({ message: 'Invalid product ID' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format'
+      });
     }
     
     // Check if product exists
     const existingProduct = await db.findProductById(productId);
     if (!existingProduct) {
-      return res.status(404).json({ message: 'Product not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
     }
     
     await db.deleteProduct(productId);
     
     res.status(200).json({
-      message: 'Product deleted successfully',
-      productId: productId
+      success: true,
+      message: 'Product deleted successfully'
     });
   } catch (err) {
     next(err);

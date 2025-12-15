@@ -1,0 +1,167 @@
+import express from 'express';
+import {
+  findAllUsers,           // NOT getUsers
+  findUserById,           // NOT getUserById
+  findUserByEmail,        // NOT getUserByEmail
+  findUsersWithFilters,   // For filtering/pagination
+  insertUser,             // NOT addUser
+  updateUser,             // ✅ Correct
+  deleteUser              // ✅ Correct
+} from '../../database.js';
+import debug from 'debug';
+const debugUsers = debug('app:users');
+import bcrypt from 'bcrypt';
+import { registerSchema, updateUserSchema } from '../../validation/userSchema.js';
+import { validate } from '../../middleware/joiValidator.js';
+import { validId } from '../../middleware/validId.js';
+import { isAuthenticated } from '../../middleware/isAuthenticated.js';
+import { ObjectId } from 'mongodb';
+
+const router = express.Router();
+
+router.get('', async (req, res) => {
+  const { keywords, role, minAge, maxAge, page, limit, sortBy } = req.query;
+
+  // Handle pagination parameters
+  const pageNum = parseInt(page) || 1;
+  const limitNum = parseInt(limit) || 0; // 0 means no limit
+  const skip = limitNum > 0 ? (pageNum - 1) * limitNum : 0;
+
+  //debugUsers(`Query Params - keywords: ${keywords}, role: ${role}, minAge: ${minAge}, maxAge: ${maxAge}`);
+  //Build a query filter
+  const filter = {};
+
+  if (keywords) filter.$text = { $search: keywords };
+  if (role) filter.role = role;
+
+  // Handle date filtering with simpler approach
+  if (minAge || maxAge) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const dateFilter = {};
+
+    if (maxAge) dateFilter.$gte = new Date(today.getTime() - maxAge * 24 * 60 * 60 * 1000); //Records must be newer than maxAge days
+    if (minAge) dateFilter.$lte = new Date(today.getTime() - minAge * 24 * 60 * 60 * 1000); //Records must be older than minAge days
+
+    filter.createdAt = dateFilter;
+  }
+
+  const sortOptions = {
+    email: { email: 1 },
+    createdAt: { createdAt: 1 },
+    role: { role: 1 }
+  };
+  const sort = sortOptions[sortBy] || { role: -1 }; // Default to no sorting if sortBy is not provided or invalid
+
+  debugUsers(`Sort is ${JSON.stringify(sort)}`);
+
+  // ✅ CORRECT: Use findUsersWithFilters
+  const users = await findUsersWithFilters(filter, sort, skip, limitNum);
+  if (!users) {
+    res.status(500).send('Error retrieving users');
+  } else {
+    res.status(200).json(users);
+  }
+});
+
+router.get('/me', isAuthenticated, async (req, res) => {
+  debugUsers(`Fetching current authenticated user: ${JSON.stringify(req.user)}`);
+  res.status(200).json(req.user);
+});
+
+router.get('/:id', validId('id'), async (req, res) => {
+  const userId = req.id; //Object Id
+  // ✅ CORRECT: Use findUserById
+  const user = await findUserById(userId);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  res.status(200).json(user);
+});
+
+router.post('', validate(registerSchema), async (req, res) => {
+  const newUser = req.body;
+
+  // ✅ CORRECT: Use findUserByEmail
+  //If user with email already exists, return 400
+  if (await findUserByEmail(newUser.email)) {
+    return res.status(400).json({ message: 'Email already in use' });
+  }
+
+  const today = new Date();
+
+  newUser.createdAt = today;
+  newUser.password = await bcrypt.hash(newUser.password, 10);
+  // ✅ CORRECT: Use insertUser (NOT addUser)
+  const result = await insertUser(newUser);
+  if (result.insertedId) {
+    res.status(201).json({ ...newUser });
+  } else {
+    res.status(500).send('Error adding user');
+  }
+});
+
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  let existingUser = null;
+  try {
+    // ✅ CORRECT: Use findUserByEmail
+    existingUser = await findUserByEmail(email);
+  } catch (err) {
+    debugUsers(`Error fetching user by email: ${err}`);
+  }
+
+  if (!existingUser) {
+    return res.status(401).json({ message: 'Invalid email or password' });
+  }
+
+  // Inform user to use better-auth endpoint
+  return res.status(400).json({
+    message: 'Please use /api/auth/sign-in/email for login',
+    endpoint: '/api/auth/sign-in/email'
+  });
+});
+
+router.patch('/me', isAuthenticated, async (req, res) => {
+  const userId = new ObjectId(req.user.id);
+  const updatedData = req.body;
+  debugUsers(`Updating user with ID: ${userId} with data: ${JSON.stringify(updatedData)}`);
+  updatedData.lastUpdatedOn = new Date();
+  updatedData.lastUpdatedBy = req.user ? req.user.email : 'self';
+  // ✅ CORRECT: Use updateUser
+  const result = await updateUser(userId, updatedData);
+  debugUsers(`Update result: ${JSON.stringify(result)}`);
+  if (result.modifiedCount === 1) {
+    res.status(200).json({ message: 'User updated successfully' });
+  } else {
+    res.status(404).json({ message: 'User not updated' });
+  }
+});
+
+router.patch('/:id', validId('id'), validate(updateUserSchema), async (req, res) => {
+  const userId = req.id; //Object Id
+  const updatedData = req.body;
+  debugUsers(`Updating user with IDD: ${userId} with data: ${JSON.stringify(updatedData)}`);
+  // ✅ CORRECT: Use updateUser
+  const result = await updateUser(userId, updatedData);
+  debugUsers(`Update result: ${JSON.stringify(result)}`);
+  if (result.modifiedCount === 1) {
+    res.status(200).json({ message: 'User updated successfully' });
+  } else {
+    res.status(404).json({ message: 'User not updated' });
+  }
+});
+
+router.delete('/:id', validId('id'), async (req, res) => {
+  const userId = req.id;
+  // ✅ CORRECT: Use deleteUser
+  const results = await deleteUser(userId);
+  if (results.deletedCount === 1) {
+    res.status(200).json({ message: 'User deleted successfully' });
+  } else {
+    res.status(404).json({ message: 'User not found' });
+  }
+});
+
+export { router as usersRouter };

@@ -1,44 +1,40 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 dotenv.config();
 
-import debug from 'debug';
-const debugServer = debug('app:Server');
-
-import { auth } from './lib/auth.js';  // ← Better-auth import
-
-// Your existing imports
-import { userRouter } from './routes/api/user.js';
-import { bugRouter } from './routes/api/bug.js';
-import { commentRouter } from './routes/api/comment.js';
-import { testRouter } from './routes/api/test.js';
-
+import express from 'express';
 const app = express();
+import debug from 'debug';
+const debugIndex = debug('app:index');
+import cors from 'cors';
+const port = process.env.PORT || 8080;
+import { auth } from "./auth.js";
+import { toNodeHandler } from "better-auth/node";
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+app.use(express.urlencoded({ extended: true })); 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+  origin: ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
+  credentials: true
+})); 
+app.use(express.static('frontend/dist'));  // ← Changed from vite-project to frontend
 
-// ✅ CORRECT: Better-auth handler (matches all /api/auth routes)
-app.use('/api/auth', async (req, res) => {
-  return auth.handler(req, res);
+app.all("/api/auth/*splat", toNodeHandler(auth));
+
+app.use('/api/users', (await import('./routes/api/users.js')).usersRouter);
+app.use('/api/bugs', (await import('./routes/api/bugs.js')).bugRouter);
+app.use('/api/bugs', (await import('./routes/api/comments.js')).commentRouter);
+app.use('/api/bugs', (await import('./routes/api/tests.js')).testRouter);
+
+// Handle React routing - send all non-API requests to React
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));  // ← Changed from vite-project to frontend
 });
 
-// Your existing routes
-app.use('/api/users', userRouter);
-app.use('/api/bugs', bugRouter);
-app.use('/api/bugs', commentRouter);  // Comments are under /api/bugs/:bugId/comments
-app.use('/api/bugs', testRouter);     // Tests are under /api/bugs/:bugId/tests
-
-app.use(express.static('frontend/dist'));
-
-const port = process.env.port || 5000;
 app.listen(port, () => {
-  debugServer(`Server running on http://localhost:${port}`);
-  console.log(`Server running on http://localhost:${port}`);
+  debugIndex(`Server running on http://localhost:${port}`)
 });
