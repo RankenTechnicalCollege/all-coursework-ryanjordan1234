@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { betterAuth } from "better-auth";
-import { getClient } from './database.js';
+import { getClient } from './database.js'; 
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { getDatabase } from "./database.js";
 
